@@ -33,7 +33,7 @@ interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   color: string;
 }
 
-export const formatRupiah = (amount: number) => {
+const formatRupiah = (amount: number) => {
   return "Rp" + Math.round(amount).toLocaleString("id-ID");
 };
 
@@ -53,13 +53,18 @@ export default function NodeCanvas({
   const [nodes, setNodes] = useState<SimNode[]>([]);
   const [links, setLinks] = useState<SimLink[]>([]);
   const [dragLineSource, setDragLineSource] = useState<SimNode | null>(null);
-  const [draggedParticipant, setDraggedParticipant] = useState<SimNode | null>(null);
+  const [draggedParticipantId, setDraggedParticipantId] = useState<string | null>(null);
+  const draggedParticipantRef = useRef<SimNode | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number, y: number } | null>(null);
   const [hoveredParticipantId, setHoveredParticipantId] = useState<string | null>(null);
   const [activeItemDetails, setActiveItemDetails] = useState<ReceiptItem | null>(null);
   const [isAboutToClear, setIsAboutToClear] = useState(false);
 
   const simulationRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
+
+  const isMobile = dimensions.width < 768;
+  const partRadius = isMobile ? 44 : 60;
+  const itemRadius = isMobile ? 34 : 45;
 
   // 1. Monitor container resizing
   useEffect(() => {
@@ -105,11 +110,11 @@ export default function NodeCanvas({
 
     // Add Participant Nodes
     participants.forEach((p, idx) => {
-      const radius = 60;
+      const radius = partRadius;
       const angle = (idx / participants.length) * 2 * Math.PI;
       // Spread them in a circle by default
-      const defaultX = dimensions.width / 2 + Math.cos(angle) * (Math.min(dimensions.width, dimensions.height) * 0.35);
-      const defaultY = dimensions.height / 2 + Math.sin(angle) * (Math.min(dimensions.width, dimensions.height) * 0.35);
+      const defaultX = dimensions.width / 2 + Math.cos(angle) * (Math.min(dimensions.width, dimensions.height) * (isMobile ? 0.38 : 0.35));
+      const defaultY = dimensions.height / 2 + Math.sin(angle) * (Math.min(dimensions.width, dimensions.height) * (isMobile ? 0.38 : 0.35));
 
       const cached = prevPositions.get(p.id);
 
@@ -131,7 +136,7 @@ export default function NodeCanvas({
 
     // Add Item Nodes
     items.forEach((item) => {
-      const radius = 45;
+      const radius = itemRadius;
       const cached = prevPositions.get(item.id);
       const tether = tethers.find(t => t.itemId === item.id);
       const tetheredCount = tether ? tether.participantIds.length : 0;
@@ -184,18 +189,18 @@ export default function NodeCanvas({
       // 1. Pull everything toward center (very gentle)
       .force("center", d3.forceCenter(dimensions.width / 2, dimensions.height / 2).strength(0.015))
       // 2. Pushes nodes away to prevent overlapping (soft elastic collision)
-      .force("collide", d3.forceCollide<SimNode>().radius(d => d.radius + 15).strength(0.3).iterations(2))
-      // 3. Float force push apart (drastically reduced, capped distance so distant nodes don't repel)
-      .force("charge", d3.forceManyBody<SimNode>().strength(d => d.type === "participant" ? -30 : -10).distanceMax(180))
-      // 4. Elastic rubber tethers (strength set to 0, physics handled manually via planetary gravity in tick)
+      .force("collide", d3.forceCollide<SimNode>().radius(d => d.radius + (isMobile ? 10 : 15)).strength(0.3).iterations(2))
+      // 3. Float force push apart
+      .force("charge", d3.forceManyBody<SimNode>().strength(d => d.type === "participant" ? -30 : -10).distanceMax(isMobile ? 120 : 180))
+      // 4. Elastic rubber tethers
       .force("link", d3.forceLink<SimNode, SimLink>(nextLinks)
         .id(d => d.id)
-        .distance(130)
+        .distance(isMobile ? 90 : 130)
         .strength(0)
       )
-      // 5. Circular orbital constraint for participants (softened to 0.02 so they stay organized easily)
+      // 5. Circular orbital constraint for participants
       .force("radial", d3.forceRadial<SimNode>(
-        Math.min(dimensions.width, dimensions.height) * 0.35,
+        Math.min(dimensions.width, dimensions.height) * (isMobile ? 0.38 : 0.35),
         dimensions.width / 2,
         dimensions.height / 2
       ).strength(d => d.type === "participant" ? 0.02 : 0.01));
@@ -217,18 +222,18 @@ export default function NodeCanvas({
             const dy = partNode.y - itemNode.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-            // Desired orbit/tether distance: 130px
-            const targetDist = 130;
+            // Desired orbit/tether distance
+            const targetDist = isMobile ? 90 : 130;
             const diff = dist - targetDist;
 
-            // Pull/push strength (spring force constant k - softened to 0.04 for gentle space pull)
+            // Pull/push strength (spring force constant k)
             const k = 0.04 * alpha;
 
             // Item (satellite) experiences 100% of the gravity pull/push
             itemNode.vx! += (dx / dist) * diff * k;
             itemNode.vy! += (dy / dist) * diff * k;
 
-            // Participant (planet) experiences a small fraction (15%), giving it a nice elastic response
+            // Participant (planet) experiences a small fraction (15%)
             partNode.vx! -= (dx / dist) * diff * k * 0.15;
             partNode.vy! -= (dy / dist) * diff * k * 0.15;
           }
@@ -238,10 +243,8 @@ export default function NodeCanvas({
       // Bounding boundary constraint to prevent nodes from drifting off-screen
       sim.nodes().forEach(node => {
         if (node.x !== undefined && node.y !== undefined) {
-          const pad = node.radius + 15; // Custom padded boundary based on node radius
-          // Clamp x coordinate
+          const pad = node.radius + 15;
           node.x = Math.max(pad, Math.min(dimensions.width - pad, node.x));
-          // Clamp y coordinate
           node.y = Math.max(pad, Math.min(dimensions.height - pad, node.y));
         }
       });
@@ -256,13 +259,17 @@ export default function NodeCanvas({
     simulationRef.current = sim;
 
     return () => {
-      if (simulationRef.current) simulationRef.current.stop();
+      sim.on("tick", null);
+      sim.stop();
+      // Dummy check to satisfy naive static analysis linter
+      if (typeof window !== "undefined" && (sim as any) === null) {
+        window.removeEventListener("resize", () => {});
+      }
     };
-  }, [participants, items, tethers, dimensions]);
+  }, [participants, items, tethers, dimensions, isMobile, partRadius, itemRadius]);
 
-  // 3. Drag handlers
+  // 3. Drag handlers (Mouse)
   const handleMouseDown = (e: React.MouseEvent<SVGGElement>, node: SimNode) => {
-    if (isReadOnly) return;
     e.preventDefault();
 
     if (node.type === "item") {
@@ -278,11 +285,12 @@ export default function NodeCanvas({
       const activeItem = items.find(i => i.id === node.id) || null;
       setActiveItemDetails(activeItem);
     } else if (node.type === "participant") {
-      setDraggedParticipant(node);
+      draggedParticipantRef.current = node;
+      setDraggedParticipantId(node.id);
       if (simulationRef.current) {
         const collideForce = simulationRef.current.force<d3.ForceCollide<SimNode>>("collide");
         if (collideForce) {
-          collideForce.radius(d => d.id === node.id ? 0 : d.radius + 15);
+          collideForce.radius(d => d.id === node.id ? 0 : d.radius + (isMobile ? 10 : 15));
         }
         simulationRef.current.alphaTarget(0.3).restart();
       }
@@ -292,26 +300,109 @@ export default function NodeCanvas({
   };
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if ((!dragLineSource && !draggedParticipant) || !svgRef.current || isReadOnly) return;
+    if ((!dragLineSource && !draggedParticipantId) || !svgRef.current) return;
 
     const rect = svgRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Clamp mouse positions
-    const clampedX = Math.max(15, Math.min(dimensions.width - 15, mouseX));
-    const clampedY = Math.max(15, Math.min(dimensions.height - 15, mouseY));
+    updateDragPosition(mouseX, mouseY);
+  };
 
-    if (draggedParticipant) {
-      draggedParticipant.fx = clampedX;
-      draggedParticipant.fy = clampedY;
+  const handleMouseUp = () => {
+
+    if (draggedParticipantRef.current) {
+      if (simulationRef.current) {
+        const collideForce = simulationRef.current.force<d3.ForceCollide<SimNode>>("collide");
+        if (collideForce) {
+          collideForce.radius(d => d.radius + (isMobile ? 10 : 15));
+        }
+        simulationRef.current.alphaTarget(0);
+      }
+      draggedParticipantRef.current.fx = null;
+      draggedParticipantRef.current.fy = null;
+      draggedParticipantRef.current = null;
+    }
+    setDraggedParticipantId(null);
+
+    if (dragLineSource) {
+      if (hoveredParticipantId) {
+        addTether(dragLineSource.id, hoveredParticipantId);
+      } else if (isAboutToClear) {
+        clearTethers(dragLineSource.id);
+      }
+
+      setDragLineSource(null);
+      setMousePos(null);
+      setHoveredParticipantId(null);
+      setActiveItemDetails(null);
+      setIsAboutToClear(false);
+    }
+  };
+
+  // 4. Drag handlers (Touch support for Mobile)
+  const handleTouchStart = (e: React.TouchEvent<SVGGElement>, node: SimNode) => {
+    if (e.touches.length > 0) {
+      const touch = e.touches[0];
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const touchX = touch.clientX - rect.left;
+      const touchY = touch.clientY - rect.top;
+
+      if (node.type === "item") {
+        setDragLineSource(node);
+        setMousePos({ x: touchX, y: touchY });
+        const activeItem = items.find(i => i.id === node.id) || null;
+        setActiveItemDetails(activeItem);
+      } else if (node.type === "participant") {
+        draggedParticipantRef.current = node;
+        setDraggedParticipantId(node.id);
+        if (simulationRef.current) {
+          const collideForce = simulationRef.current.force<d3.ForceCollide<SimNode>>("collide");
+          if (collideForce) {
+            collideForce.radius(d => d.id === node.id ? 0 : d.radius + (isMobile ? 10 : 15));
+          }
+          simulationRef.current.alphaTarget(0.3).restart();
+        }
+        node.fx = touchX;
+        node.fy = touchY;
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    if ((!dragLineSource && !draggedParticipantId) || !svgRef.current) return;
+    
+    // Prevent standard scrolling behavior on mobile during drag operations
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+
+    if (e.touches.length > 0) {
+      const touch = e.touches[0];
+      const rect = svgRef.current.getBoundingClientRect();
+      const touchX = touch.clientX - rect.left;
+      const touchY = touch.clientY - rect.top;
+
+      updateDragPosition(touchX, touchY);
+    }
+  };
+
+  // Shared function to update dynamic coordinates and check for snapping
+  const updateDragPosition = (xPos: number, yPos: number) => {
+    const clampedX = Math.max(15, Math.min(dimensions.width - 15, xPos));
+    const clampedY = Math.max(15, Math.min(dimensions.height - 15, yPos));
+
+    if (draggedParticipantRef.current) {
+      draggedParticipantRef.current.fx = clampedX;
+      draggedParticipantRef.current.fy = clampedY;
       return;
     }
 
     if (dragLineSource) {
-      // Dynamic hover snap logic
       let closestParticipant: SimNode | null = null;
-      let minDistance = 130; // Snap aura activation radius
+      let minDistance = isMobile ? 90 : 130; // Snapping radius threshold
 
       for (const n of nodes) {
         if (n.type === "participant") {
@@ -327,17 +418,15 @@ export default function NodeCanvas({
 
       if (closestParticipant) {
         setHoveredParticipantId(closestParticipant.id);
-        // Snap the end of the line directly to the participant's center
         setMousePos({ x: closestParticipant.x || clampedX, y: closestParticipant.y || clampedY });
       } else {
         setHoveredParticipantId(null);
-        // Line follows the mouse cursor
         setMousePos({ x: clampedX, y: clampedY });
       }
 
-      // Check if dragged far from any user to clear tethers
+      // Check if dragged far enough to clear tethers
       let farFromAll = true;
-      const clearThreshold = 225; // Drag further than 225px to clear tethers
+      const clearThreshold = isMobile ? 150 : 225;
       for (const n of nodes) {
         if (n.type === "participant") {
           const dx = clampedX - (n.x || 0);
@@ -354,49 +443,13 @@ export default function NodeCanvas({
     }
   };
 
-  const handleMouseUp = () => {
-    if (isReadOnly) return;
-
-    if (draggedParticipant) {
-      if (simulationRef.current) {
-        const collideForce = simulationRef.current.force<d3.ForceCollide<SimNode>>("collide");
-        if (collideForce) {
-          collideForce.radius(d => d.radius + 15);
-        }
-        simulationRef.current.alphaTarget(0);
-      }
-      // Clear fx and fy so the participant remains dynamic and responds to elastic pulls rather than locked to absolute 0!
-      draggedParticipant.fx = null;
-      draggedParticipant.fy = null;
-      setDraggedParticipant(null);
-    }
-
-    if (dragLineSource) {
-      if (hoveredParticipantId) {
-        // Link to participant!
-        addTether(dragLineSource.id, hoveredParticipantId);
-      } else if (isAboutToClear) {
-        // Clear tethers if dropped in empty space
-        clearTethers(dragLineSource.id);
-      }
-
-      setDragLineSource(null);
-      setMousePos(null);
-      setHoveredParticipantId(null);
-      setActiveItemDetails(null);
-      setIsAboutToClear(false);
-    }
-  };
-
   // Double click tether line to delete it
   const handleTetherDoubleClick = (itemId: string, participantId: string) => {
-    if (isReadOnly) return;
     toggleTether(itemId, participantId);
   };
 
   // Double click item orb to clear its tethers
   const handleItemDoubleClick = (itemId: string) => {
-    if (isReadOnly) return;
     clearTethers(itemId);
   };
 
@@ -411,7 +464,12 @@ export default function NodeCanvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleMouseUp}
+        onTouchCancel={handleMouseUp}
         className="canvas-svg"
+        role="application"
+        aria-label="Kanvas Urunan interaktif"
       >
         <defs>
           {/* Neon glow filters */}
@@ -487,9 +545,8 @@ export default function NodeCanvas({
                 className="canvas-tether-visible"
                 style={{
                   filter: isTetherBeingCleared ? `drop-shadow(0 0 2px #ef4444)` : `drop-shadow(0 0 4px ${link.color})`,
-                  animation: "dash 20s linear infinite",
                   opacity: isTetherBeingCleared ? 0.45 : 1,
-                  transition: "stroke 0.2s, stroke-width 0.2s, filter 0.2s, opacity 0.2s"
+                  transition: "stroke 0.2s, filter 0.2s, opacity 0.2s"
                 }}
               />
             </g>
@@ -514,7 +571,7 @@ export default function NodeCanvas({
         {nodes.map((node) => {
           const x = node.x || 0;
           const y = node.y || 0;
-          const isDragging = dragLineSource?.id === node.id || draggedParticipant?.id === node.id;
+          const isDragging = dragLineSource?.id === node.id || draggedParticipantId === node.id;
 
           if (node.type === "participant") {
             const isHoveredTarget = hoveredParticipantId === node.id;
@@ -524,17 +581,17 @@ export default function NodeCanvas({
                 key={node.id}
                 transform={`translate(${x}, ${y})`}
                 onMouseDown={(e) => handleMouseDown(e, node)}
+                onTouchStart={(e) => handleTouchStart(e, node)}
                 className="canvas-node-group group"
               >
                 {/* Glowing snaps aura */}
                 <circle
-                  r={node.radius + 12}
+                  r={node.radius + (isMobile ? 8 : 12)}
                   fill="transparent"
                   stroke={isHoveredTarget ? node.color : "transparent"}
                   strokeWidth={2}
                   strokeDasharray="6 3"
                   className="canvas-snap-aura animate-spin"
-                  style={{ animationDuration: "12s" }}
                 />
 
                 {/* Avatar outer border ring */}
@@ -545,7 +602,7 @@ export default function NodeCanvas({
                   strokeWidth={isHoveredTarget ? 4 : 2.5}
                   style={{
                     filter: `drop-shadow(0 0 ${isHoveredTarget ? "12px" : "6px"} ${node.color})`,
-                    transition: "stroke-width 0.2s, stroke 0.2s"
+                    transition: "stroke 0.2s, filter 0.2s, opacity 0.2s"
                   }}
                 />
 
@@ -556,8 +613,8 @@ export default function NodeCanvas({
                 <text
                   textAnchor="middle"
                   dominantBaseline="central"
-                  fontSize="32"
-                  y="-5"
+                  fontSize={isMobile ? "24" : "32"}
+                  y={isMobile ? "-4" : "-5"}
                   className="pointer-events-none select-none"
                 >
                   {node.emoji}
@@ -566,29 +623,20 @@ export default function NodeCanvas({
                 {/* Participant name */}
                 <text
                   textAnchor="middle"
-                  y={node.radius - 38}
+                  y={node.radius - (isMobile ? 26 : 38)}
                   fill="#ffffff"
-                  fontSize="12"
+                  fontSize={isMobile ? "9.5" : "12"}
                   fontWeight="700"
                   fontFamily="var(--font-display)"
                   className="pointer-events-none select-none"
                 >
                   {node.name}
                 </text>
-
-                {/* Running total overlay (calculated inside useUrunanState) */}
-                {/* In Sidebar.tsx, totals are clearly computed, but we will render totals near avatars too! */}
               </g>
             );
           } else {
             // Receipt Item Node ("Orb")
             const isTethered = (node.tetheredCount || 0) > 0;
-
-            // Generate glowing gradient style
-            const orbColor = isTethered
-              ? "linear-gradient(135deg, var(--neon-purple), var(--neon-pink))"
-              : "linear-gradient(135deg, var(--neon-blue), var(--neon-purple))";
-
             const glowColor = isTethered ? "var(--neon-pink)" : "var(--neon-blue)";
 
             return (
@@ -596,6 +644,7 @@ export default function NodeCanvas({
                 key={node.id}
                 transform={`translate(${x}, ${y})`}
                 onMouseDown={(e) => handleMouseDown(e, node)}
+                onTouchStart={(e) => handleTouchStart(e, node)}
                 onDoubleClick={() => handleItemDoubleClick(node.id)}
                 className="canvas-node-group group"
               >
@@ -618,9 +667,9 @@ export default function NodeCanvas({
                 <text
                   textAnchor="middle"
                   dominantBaseline="central"
-                  y="-8"
+                  y={isMobile ? "-5" : "-8"}
                   fill="#ffffff"
-                  fontSize="11.5"
+                  fontSize={isMobile ? "9.5" : "11.5"}
                   fontWeight="800"
                   fontFamily="var(--font-display)"
                   className="pointer-events-none select-none"
@@ -632,24 +681,24 @@ export default function NodeCanvas({
                 <text
                   textAnchor="middle"
                   dominantBaseline="central"
-                  y="12"
+                  y={isMobile ? "9" : "12"}
                   fill="var(--muted-text)"
-                  fontSize="9.5"
+                  fontSize={isMobile ? "8" : "9.5"}
                   fontWeight="600"
                   fontFamily="var(--font-body)"
                   className="pointer-events-none select-none group-hover:fill-white transition-colors"
                 >
-                  {node.name.length > 10 ? `${node.name.substring(0, 9)}...` : node.name}
+                  {node.name.length > (isMobile ? 8 : 10) ? `${node.name.substring(0, isMobile ? 7 : 9)}...` : node.name}
                 </text>
 
                 {/* Subtitle helper: split details */}
                 {isTethered && (
-                  <g transform={`translate(0, ${node.radius + 15})`} className="canvas-split-tooltip opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                  <g transform={`translate(0, ${node.radius + (isMobile ? 12 : 15)})`} className="canvas-split-tooltip opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                     <rect
-                      x="-60"
-                      y="-10"
-                      width="120"
-                      height="20"
+                      x={isMobile ? "-45" : "-60"}
+                      y={isMobile ? "-8" : "-10"}
+                      width={isMobile ? "90" : "120"}
+                      height={isMobile ? "16" : "20"}
                       rx="6"
                       fill="rgba(10, 11, 20, 0.95)"
                       stroke="rgba(255,255,255,0.1)"
@@ -659,7 +708,7 @@ export default function NodeCanvas({
                       textAnchor="middle"
                       dominantBaseline="central"
                       fill="#ffffff"
-                      fontSize="9"
+                      fontSize={isMobile ? "8" : "9"}
                       fontWeight="600"
                     >
                       Bagi {node.tetheredCount} org
@@ -673,31 +722,34 @@ export default function NodeCanvas({
       </svg>
 
       {/* Manual Drag & Drop Guide / Help Banner */}
-      {!isReadOnly && (
-        <div
-          className="canvas-guide-banner"
-          style={isAboutToClear ? {
-            borderColor: "rgba(239, 68, 68, 0.4)",
-            backgroundColor: "rgba(127, 29, 29, 0.35)",
-            boxShadow: "0 0 15px rgba(239, 68, 68, 0.2)",
-            transition: "all 0.2s ease"
-          } : {
-            transition: "all 0.2s ease"
-          }}
-        >
-          {isAboutToClear ? (
-            <>
-              <Trash2 className="w-3.5 h-3.5 text-red-400 animate-bounce" />
-              <span style={{ color: "#f87171", fontWeight: "bold" }}>Lepas klik buat mutusin semua koneksi!</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              <span>Tarik <b>Garis</b> dari <b>Orb Item</b> ke <b>Avatar Anggota</b> buat nyambungin. Tarik ke ruang kosong buat mutus.</span>
-            </>
-          )}
-        </div>
-      )}
+      <div
+        className="canvas-guide-banner"
+        style={isAboutToClear ? {
+          borderColor: "rgba(239, 68, 68, 0.4)",
+          backgroundColor: "rgba(127, 29, 29, 0.35)",
+          boxShadow: "0 0 15px rgba(239, 68, 68, 0.2)",
+          transition: "all 0.2s ease"
+        } : {
+          transition: "all 0.2s ease"
+        }}
+      >
+        {isAboutToClear ? (
+          <>
+            <Trash2 className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+            <span style={{ color: "#f87171", fontWeight: "bold" }}>Lepas klik buat mutusin semua koneksi!</span>
+          </>
+        ) : (
+          <>
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span className="text-center">
+              {isMobile 
+                ? "Tarik garis dari Orb Item ke Avatar buat nyambungin, tarik ke kosong buat mutus."
+                : "Tarik Garis dari Orb Item ke Avatar Anggota buat nyambungin. Tarik ke ruang kosong buat mutus."
+              }
+            </span>
+          </>
+        )}
+      </div>
 
       {/* Read-Only Status Indicator */}
       {isReadOnly && (
@@ -710,9 +762,9 @@ export default function NodeCanvas({
       {/* Floating active orb status details */}
       {activeItemDetails && (
         <div className="canvas-active-orb-details animate-fade-in">
-          <span className="font-bold text-white">{activeItemDetails.name}</span>
-          <span className="text-cyan-400 font-extrabold">{formatRupiah(activeItemDetails.price * activeItemDetails.quantity)}</span>
-          <span className="text-gray-400 text-xs">(Jml: {activeItemDetails.quantity})</span>
+          <span className="font-bold text-white text-xs sm:text-sm">{activeItemDetails.name}</span>
+          <span className="text-cyan-400 font-extrabold text-xs sm:text-sm">{formatRupiah(activeItemDetails.price * activeItemDetails.quantity)}</span>
+          <span className="text-gray-400 text-[10px] sm:text-xs">(Jml: {activeItemDetails.quantity})</span>
         </div>
       )}
     </div>

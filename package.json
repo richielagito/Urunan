@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "doctor": "react-doctor"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
@@ -26,6 +27,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
-    "typescript": "^5"
+    "typescript": "^5",
+    "react-doctor": "^0.2.6"
   }
 }

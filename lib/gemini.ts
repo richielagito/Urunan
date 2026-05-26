@@ -9,8 +9,10 @@ export interface ParsedItem {
   quantity: number;
 }
 
-export interface GeminiResponse {
+export interface GeminiReceiptResult {
   items: ParsedItem[];
+  tax: number;
+  serviceCharge: number;
 }
 
 /**
@@ -36,8 +38,9 @@ function fileToBase64(file: File): Promise<{ mimeType: string; base64Data: strin
 
 /**
  * Parses a receipt image file using the Gemini 2.5 Flash-Lite API.
+ * Returns parsed items along with detected tax and service charge amounts.
  */
-export async function parseReceiptWithGemini(file: File, apiKey: string): Promise<ParsedItem[]> {
+export async function parseReceiptWithGemini(file: File, apiKey: string): Promise<GeminiReceiptResult> {
   if (!apiKey) {
     throw new Error("Gemini API Key is required. Please set it in Settings.");
   }
@@ -52,16 +55,20 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
   // 3. Assemble system instructions and multimodal prompt
   const systemInstruction = 
     "You are an expert receipt parsing assistant. Your task is to look at the receipt image and extract " +
-    "individual purchased items. Extract the item name, its unit price (or total price of the line divided by quantity), " +
-    "and the quantity. Do not include taxes, service charges, tips, or total summaries as item lines. " +
-    "Instead, parse only actual items purchased. Convert all item names to title case and keep them concise.";
+    "individual purchased items, plus any tax and service charge amounts. " +
+    "For items: extract the item name, its unit price (or total price of the line divided by quantity), " +
+    "and the quantity. Convert all item names to title case and keep them concise. " +
+    "For tax: look for lines labeled 'tax', 'pajak', 'PPN', 'PB1', 'VAT', or similar. Return the total tax amount as a number. " +
+    "For service charge: look for lines labeled 'service', 'service charge', 'biaya layanan', 'SC', or similar. Return the total service charge amount as a number. " +
+    "If tax or service charge is not found on the receipt, return 0 for that field. " +
+    "Do NOT include tax, service charge, tips, discounts, or total/subtotal lines as item lines.";
 
   const body = {
     contents: [
       {
         parts: [
           {
-            text: "Extract all items, quantities, and prices from this receipt image. " +
+            text: "Extract all items, quantities, prices, tax, and service charge from this receipt image. " +
                   "Return only the structured JSON representation matching the requested schema."
           },
           {
@@ -106,9 +113,17 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
               },
               required: ["name", "price", "quantity"]
             }
+          },
+          tax: {
+            type: "NUMBER",
+            description: "Total tax amount on the receipt (e.g. PPN, PB1, VAT). Return 0 if not found."
+          },
+          serviceCharge: {
+            type: "NUMBER",
+            description: "Total service charge amount on the receipt. Return 0 if not found."
           }
         },
-        required: ["items"]
+        required: ["items", "tax", "serviceCharge"]
       }
     }
   };
@@ -137,9 +152,13 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
       throw new Error("Empty text response from Gemini API");
     }
 
-    const parsedJson = JSON.parse(textResponse) as GeminiResponse;
+    const parsedJson = JSON.parse(textResponse) as GeminiReceiptResult;
     if (parsedJson && Array.isArray(parsedJson.items)) {
-      return parsedJson.items;
+      return {
+        items: parsedJson.items,
+        tax: parsedJson.tax || 0,
+        serviceCharge: parsedJson.serviceCharge || 0
+      };
     } else {
       throw new Error("Invalid response format: 'items' array missing");
     }
@@ -148,39 +167,3 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
     throw new Error("Could not parse receipt contents. Make sure the image is clear and try again.");
   }
 }
-
-/**
- * Mock Receipt Parser Presets to experience the application immediately without an API Key.
- */
-export const MOCK_RECEIPTS = [
-  {
-    name: "🍕 Makan Malam Pizza Parlor",
-    items: [
-      { name: "Pizza Margherita Gede", price: 120000, quantity: 1 },
-      { name: "Kentang Goreng Truffle", price: 45000, quantity: 1 },
-      { name: "Salad Caesar Seger", price: 55000, quantity: 2 },
-      { name: "Bir Craft Segelas", price: 70000, quantity: 4 },
-      { name: "Es Gelato Satu Cup", price: 35000, quantity: 3 }
-    ]
-  },
-  {
-    name: "☕ Kopi & Nongkrong Cantik",
-    items: [
-      { name: "Roti Panggang Alpukat Sourdough", price: 65000, quantity: 2 },
-      { name: "Eggs Benedict Royale Mewah", price: 85000, quantity: 1 },
-      { name: "Es Caramel Macchiato", price: 45000, quantity: 2 },
-      { name: "Matcha Latte Anget", price: 40000, quantity: 1 },
-      { name: "Croissant Cokelat Lembut", price: 25000, quantity: 3 }
-    ]
-  },
-  {
-    name: "🛒 Belanja Cemilan & Bulanan",
-    items: [
-      { name: "Bluberi Organik Manis", price: 45000, quantity: 2 },
-      { name: "Yogurt Yunani Satu Bak", price: 65000, quantity: 1 },
-      { name: "Granola Cokelat Chip", price: 55000, quantity: 1 },
-      { name: "Susu Almond 1L", price: 35000, quantity: 2 },
-      { name: "Air Soda Dus-dusan", price: 28000, quantity: 1 }
-    ]
-  }
-];

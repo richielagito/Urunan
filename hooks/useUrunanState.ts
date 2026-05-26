@@ -27,6 +27,52 @@ export interface UrunanState {
   participants: Participant[];
   items: ReceiptItem[];
   tethers: Tether[];
+  tax: number;
+  serviceCharge: number;
+}
+
+// Pack Urunan state into a minimal array structure to shorten the share URL dramatically
+// format: [ [participants], [items], [tethers], [tax, serviceCharge] ]
+// Participant: [id, name, emoji, color]
+// ReceiptItem: [id, name, price, quantity]
+// Tether: [itemId, [participantIds]]
+function packState(participants: Participant[], items: ReceiptItem[], tethers: Tether[], tax: number = 0, serviceCharge: number = 0): any[] {
+  const packedParticipants = participants.map(p => [p.id, p.name, p.emoji, p.color]);
+  const packedItems = items.map(i => [i.id, i.name, i.price, i.quantity]);
+  const packedTethers = tethers.map(t => [t.itemId, t.participantIds]);
+  return [packedParticipants, packedItems, packedTethers, [tax, serviceCharge]];
+}
+
+// Unpack minimal array structure back into full UrunanState objects
+// Backward compatible: old URLs without tax/service (length 3) default to 0
+function unpackState(packed: any[]): UrunanState | null {
+  if (!packed || !Array.isArray(packed) || packed.length < 3) return null;
+  const [packedParticipants, packedItems, packedTethers, packedCharges] = packed;
+  
+  const participants: Participant[] = (packedParticipants || []).map((p: any) => ({
+    id: p[0],
+    name: p[1],
+    emoji: p[2],
+    color: p[3]
+  }));
+  
+  const items: ReceiptItem[] = (packedItems || []).map((i: any) => ({
+    id: i[0],
+    name: i[1],
+    price: i[2],
+    quantity: i[3]
+  }));
+  
+  const tethers: Tether[] = (packedTethers || []).map((t: any) => ({
+    itemId: t[0],
+    participantIds: t[1]
+  }));
+
+  // Backward compat: old URLs won't have packedCharges
+  const tax = Array.isArray(packedCharges) ? (packedCharges[0] || 0) : 0;
+  const serviceCharge = Array.isArray(packedCharges) ? (packedCharges[1] || 0) : 0;
+  
+  return { participants, items, tethers, tax, serviceCharge };
 }
 
 const LOCAL_STORAGE_KEY = "urunan_session_state";
@@ -54,6 +100,8 @@ export function useUrunanState() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [items, setItems] = useState<ReceiptItem[]>([]);
   const [tethers, setTethers] = useState<Tether[]>([]);
+  const [tax, setTaxState] = useState<number>(0);
+  const [serviceCharge, setServiceChargeState] = useState<number>(0);
   const [geminiApiKey, setGeminiApiKeyState] = useState<string>("");
   const [isReadOnly, setIsReadOnly] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
@@ -81,11 +129,23 @@ export function useUrunanState() {
           const compressed = hash.substring(7);
           const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
           if (decompressed) {
-            const parsed = JSON.parse(decompressed) as UrunanState;
-            if (parsed && Array.isArray(parsed.participants) && Array.isArray(parsed.items)) {
-              setParticipants(parsed.participants);
-              setItems(parsed.items);
-              setTethers(parsed.tethers || []);
+            const parsed = JSON.parse(decompressed);
+            let stateData: UrunanState | null = null;
+            
+            if (Array.isArray(parsed)) {
+              // Compact format
+              stateData = unpackState(parsed);
+            } else if (parsed && Array.isArray(parsed.participants)) {
+              // Legacy full JSON format
+              stateData = parsed as UrunanState;
+            }
+            
+            if (stateData) {
+              setParticipants(stateData.participants);
+              setItems(stateData.items);
+              setTethers(stateData.tethers || []);
+              setTaxState(stateData.tax || 0);
+              setServiceChargeState(stateData.serviceCharge || 0);
               setIsReadOnly(true);
               setIsInitialized(true);
               return;
@@ -105,6 +165,8 @@ export function useUrunanState() {
             setParticipants(parsed.participants);
             setItems(parsed.items);
             setTethers(parsed.tethers || []);
+            setTaxState(parsed.tax || 0);
+            setServiceChargeState(parsed.serviceCharge || 0);
             setIsReadOnly(false);
             setIsInitialized(true);
             return;
@@ -118,6 +180,8 @@ export function useUrunanState() {
       setParticipants(DEFAULT_PARTICIPANTS);
       setItems(DEFAULT_ITEMS);
       setTethers(DEFAULT_TETHERS);
+      setTaxState(0);
+      setServiceChargeState(0);
       setIsReadOnly(false);
       setIsInitialized(true);
     };
@@ -125,12 +189,24 @@ export function useUrunanState() {
     handleInitialLoad();
   }, []);
 
+  // Set tax (with read-only guard)
+  const setTax = useCallback((value: number) => {
+    if (isReadOnly) return;
+    setTaxState(Math.max(0, value));
+  }, [isReadOnly]);
+
+  // Set service charge (with read-only guard)
+  const setServiceCharge = useCallback((value: number) => {
+    if (isReadOnly) return;
+    setServiceChargeState(Math.max(0, value));
+  }, [isReadOnly]);
+
   // Save to localStorage whenever state changes (if not in read-only shared mode)
   useEffect(() => {
     if (!isInitialized || isReadOnly) return;
-    const state: UrunanState = { participants, items, tethers };
+    const state: UrunanState = { participants, items, tethers, tax, serviceCharge };
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-  }, [participants, items, tethers, isReadOnly, isInitialized]);
+  }, [participants, items, tethers, tax, serviceCharge, isReadOnly, isInitialized]);
 
   // Actions: Crew / Participants
   const addParticipant = useCallback((name: string, emoji: string, color: string) => {
@@ -156,12 +232,16 @@ export function useUrunanState() {
     setParticipants(prev => prev.filter(p => p.id !== id));
     // Clean up tethers containing this participant
     setTethers(prev =>
-      prev
-        .map(t => ({
-          ...t,
-          participantIds: t.participantIds.filter(pid => pid !== id)
-        }))
-        .filter(t => t.participantIds.length > 0)
+      prev.reduce<Tether[]>((acc, t) => {
+        const filteredPids = t.participantIds.filter(pid => pid !== id);
+        if (filteredPids.length > 0) {
+          acc.push({
+            ...t,
+            participantIds: filteredPids
+          });
+        }
+        return acc;
+      }, [])
     );
   }, [isReadOnly]);
 
@@ -208,7 +288,6 @@ export function useUrunanState() {
 
   // Actions: Tethers (Drag and Drop / Toggle Link)
   const toggleTether = useCallback((itemId: string, participantId: string) => {
-    if (isReadOnly) return;
     setTethers(prev => {
       const existing = prev.find(t => t.itemId === itemId);
       if (existing) {
@@ -228,10 +307,9 @@ export function useUrunanState() {
         return [...prev, { itemId, participantIds: [participantId] }];
       }
     });
-  }, [isReadOnly]);
+  }, []);
 
   const addTether = useCallback((itemId: string, participantId: string) => {
-    if (isReadOnly) return;
     setTethers(prev => {
       const existing = prev.find(t => t.itemId === itemId);
       if (existing) {
@@ -243,10 +321,9 @@ export function useUrunanState() {
         return [...prev, { itemId, participantIds: [participantId] }];
       }
     });
-  }, [isReadOnly]);
+  }, []);
 
   const removeTether = useCallback((itemId: string, participantId: string) => {
-    if (isReadOnly) return;
     setTethers(prev => {
       const existing = prev.find(t => t.itemId === itemId);
       if (!existing) return prev;
@@ -256,12 +333,11 @@ export function useUrunanState() {
       }
       return prev.map(t => (t.itemId === itemId ? { ...t, participantIds: updatedIds } : t));
     });
-  }, [isReadOnly]);
+  }, []);
 
   const clearTethers = useCallback((itemId: string) => {
-    if (isReadOnly) return;
     setTethers(prev => prev.filter(t => t.itemId !== itemId));
-  }, [isReadOnly]);
+  }, []);
 
   // Clone a shared read-only session into a mutable local session
   const cloneSession = useCallback(() => {
@@ -274,14 +350,14 @@ export function useUrunanState() {
 
   // Generate share link
   const generateShareUrl = useCallback(() => {
-    const state: UrunanState = { participants, items, tethers };
-    const json = JSON.stringify(state);
+    const packed = packState(participants, items, tethers, tax, serviceCharge);
+    const json = JSON.stringify(packed);
     const compressed = LZString.compressToEncodedURIComponent(json);
     if (typeof window !== "undefined") {
       return `${window.location.origin}${window.location.pathname}#share=${compressed}`;
     }
     return "";
-  }, [participants, items, tethers]);
+  }, [participants, items, tethers, tax, serviceCharge]);
 
   // Reset to default
   const resetToDefault = useCallback(() => {
@@ -289,6 +365,8 @@ export function useUrunanState() {
     setParticipants(DEFAULT_PARTICIPANTS);
     setItems(DEFAULT_ITEMS);
     setTethers(DEFAULT_TETHERS);
+    setTaxState(0);
+    setServiceChargeState(0);
   }, [isReadOnly]);
 
   // Clear everything
@@ -297,16 +375,19 @@ export function useUrunanState() {
     setParticipants([]);
     setItems([]);
     setTethers([]);
+    setTaxState(0);
+    setServiceChargeState(0);
   }, [isReadOnly]);
 
   // Computed: Split totals
-  // participantId -> total cost split assigned to them
+  // participantId -> total cost split assigned to them (including proportional tax & service)
   const individualTotals = useCallback(() => {
     const totals: Record<string, number> = {};
     participants.forEach(p => {
       totals[p.id] = 0;
     });
 
+    // First pass: compute item subtotals per person
     items.forEach(item => {
       const tether = tethers.find(t => t.itemId === item.id);
       if (tether && tether.participantIds.length > 0) {
@@ -319,10 +400,35 @@ export function useUrunanState() {
       }
     });
 
+    // Second pass: distribute tax & service proportionally based on item subtotals
+    const extraCharges = tax + serviceCharge;
+    if (extraCharges > 0) {
+      const itemSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      if (itemSubtotal > 0) {
+        // Proportional split based on each person's share of item costs
+        participants.forEach(p => {
+          const proportion = totals[p.id] / itemSubtotal;
+          totals[p.id] += extraCharges * proportion;
+        });
+      } else if (participants.length > 0) {
+        // No items tethered yet — split equally
+        const equalShare = extraCharges / participants.length;
+        participants.forEach(p => {
+          totals[p.id] += equalShare;
+        });
+      }
+    }
+
     return totals;
-  }, [participants, items, tethers]);
+  }, [participants, items, tethers, tax, serviceCharge]);
 
   const totalReceiptCost = useCallback(() => {
+    const itemSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    return itemSubtotal + tax + serviceCharge;
+  }, [items, tax, serviceCharge]);
+
+  // Computed: item subtotal only (without tax/service)
+  const itemSubtotal = useCallback(() => {
     return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   }, [items]);
 
@@ -339,6 +445,8 @@ export function useUrunanState() {
     participants,
     items,
     tethers,
+    tax,
+    serviceCharge,
     geminiApiKey,
     isReadOnly,
     isInitialized,
@@ -353,6 +461,8 @@ export function useUrunanState() {
     addTether,
     removeTether,
     clearTethers,
+    setTax,
+    setServiceCharge,
     setGeminiApiKey,
     cloneSession,
     generateShareUrl,
@@ -360,6 +470,7 @@ export function useUrunanState() {
     clearAll,
     individualTotals: individualTotals(),
     totalReceiptCost: totalReceiptCost(),
+    itemSubtotal: itemSubtotal(),
     isSplitComplete: isSplitComplete()
   };
 }

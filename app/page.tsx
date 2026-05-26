@@ -1,73 +1,118 @@
-"use client";
+import React from "react";
+import type { Metadata } from "next";
 
-import React, { useEffect, useState } from "react";
-import Sidebar from "@/components/Sidebar";
-import NodeCanvas from "@/components/NodeCanvas";
-import { useUrunanState } from "@/hooks/useUrunanState";
-import { Sparkles } from "lucide-react";
+export const metadata: Metadata = {
+  title: "Urunan - Patungan Jadi Mudah, Adil, & Transparan",
+  description: "Aplikasi pintar untuk patungan bareng teman atau kolega secara adil dan transparan. Tanpa perlu bikin akun, gratis selamanya, private, dan instan.",
+};
+import Link from "next/link";
+import { Sparkles, Shield, UserX, ScanText, ArrowRight } from "lucide-react";
+import styles from "./page.module.css";
 
-export default function Home() {
-  const [mounted, setMounted] = useState(false);
-  const state = useUrunanState();
-
-  // Prevent hydration errors by waiting for the component to be mounted client-side
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted || !state.isInitialized) {
-    return (
-      <div className="loading-screen">
-        {/* Decorative ambient glowing backdrops */}
-        <div className="loading-ambient-glow" />
-        
-        <div className="loading-content">
-          <div className="loading-spinner" />
-          <h2 className="loading-title logo-text">
-            URUNAN <Sparkles className="w-5 h-5 text-indigo-400" />
-          </h2>
-          <p className="loading-subtitle">Nge-booting physics engine...</p>
-        </div>
-      </div>
-    );
-  }
-
+export default function LandingPage() {
   return (
-    <main className="app-container">
-      
-      {/* Dynamic Left Control Dashboard Sidebar */}
-      <Sidebar
-        participants={state.participants}
-        items={state.items}
-        tethers={state.tethers}
-        individualTotals={state.individualTotals}
-        totalReceiptCost={state.totalReceiptCost}
-        isSplitComplete={state.isSplitComplete}
-        isReadOnly={state.isReadOnly}
-        geminiApiKey={state.geminiApiKey}
-        setGeminiApiKey={state.setGeminiApiKey}
-        addParticipant={state.addParticipant}
-        deleteParticipant={state.deleteParticipant}
-        addItem={state.addItem}
-        deleteItem={state.deleteItem}
-        addParsedItems={state.addParsedItems}
-        cloneSession={state.cloneSession}
-        generateShareUrl={state.generateShareUrl}
-        resetToDefault={state.resetToDefault}
-        clearAll={state.clearAll}
-      />
+    <div className={styles.landingContainer}>
 
-      {/* Force-directed Interactive Node Graph Physics Canvas */}
-      <NodeCanvas
-        participants={state.participants}
-        items={state.items}
-        tethers={state.tethers}
-        toggleTether={state.toggleTether}
-        addTether={state.addTether}
-        clearTethers={state.clearTethers}
-        isReadOnly={state.isReadOnly}
-      />
-      
-    </main>
+      {/* Background Orbs for Glassmorphism Context */}
+      <div className={styles.ambientOrb1} />
+      <div className={styles.ambientOrb2} />
+
+      {/* Main Content */}
+      <main className={styles.mainContent}>
+
+        {/* Hero Section */}
+        <div className={styles.heroSection}>
+          <h1 className={styles.heroTitle}>urunan</h1>
+
+          <div className={styles.dictionaryBlock}>
+            <div>
+              <span className={styles.wordDefinition}>/urun·an/</span>
+              <span className={styles.wordType}>(Nomina)</span>
+            </div>
+            <p className={styles.wordMeaning}>
+              Kontribusi uang untuk tujuan bersama; iuran; patungan.
+            </p>
+          </div>
+
+          <p className={styles.heroDesc}>
+            Cara baru patungan bareng temen yang asik, adil dan transparan. Nggak ada lagi drama soal siapa bayar apa.
+          </p>
+
+          <Link href="/app" className={styles.ctaButton}>
+            <span>Cobain Gratis</span>
+            <ArrowRight className={`w-5 h-5 ${styles.ctaIcon}`} />
+          </Link>
+        </div>
+
+        {/* Features Section */}
+        <div className={styles.featuresSection}>
+
+          {/* Feature 1 */}
+          <div className={styles.featureCard}>
+            <div className={`${styles.iconWrapper} ${styles.iconEmerald}`}>
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <h3 className={styles.featureTitle}>Gratis Selamanya</h3>
+            <p className={styles.featureDesc}>
+              Nggak ada biaya berlangganan. Semua fitur premium bisa kamu pakai gratis sampai kapanpun.
+            </p>
+          </div>
+
+          {/* Feature 2 */}
+          <div className={styles.featureCard}>
+            <div className={`${styles.iconWrapper} ${styles.iconBlue}`}>
+              <Shield className="w-6 h-6" />
+            </div>
+            <h3 className={styles.featureTitle}>Private & Aman</h3>
+            <p className={styles.featureDesc}>
+              Data kamu aman dan nggak disimpan di server pihak ketiga. Semua kalkulasi berjalan langsung di perangkatmu.
+            </p>
+          </div>
+
+          {/* Feature 3 */}
+          <div className={styles.featureCard}>
+            <div className={`${styles.iconWrapper} ${styles.iconRose}`}>
+              <UserX className="w-6 h-6" />
+            </div>
+            <h3 className={styles.featureTitle}>Tanpa Perlu Akun</h3>
+            <p className={styles.featureDesc}>
+              Langsung pakai tanpa perlu repot registrasi, login, atau masukin email. Cepat dan anti-ribet.
+            </p>
+          </div>
+
+          {/* Feature 4 */}
+          <div className={styles.featureCard}>
+            <div className={`${styles.iconWrapper} ${styles.iconPurple}`}>
+              <ScanText className="w-6 h-6" />
+            </div>
+            <h3 className={styles.featureTitle}>Scan Struk Pake AI</h3>
+            <p className={styles.featureDesc}>
+              Input item otomatis dengan sistem BYOK (Bring Your Own Key) yang super pintar dari Gemini AI.
+            </p>
+          </div>
+
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className={styles.footer}>
+        <div className={styles.footerContent}>
+          <div className={styles.footerText} suppressHydrationWarning>
+            &copy; {new Date().getFullYear()} Urunan. All rights reserved.
+          </div>
+          <div className={styles.madeBy}>
+            <span>Made by</span>
+            <a
+              href="https://www.richielagito.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.madeByLink}
+            >
+              Richie
+            </a>
+          </div>
+        </div>
+      </footer>
+    </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import {
   Users,
   Receipt,
@@ -14,10 +15,11 @@ import {
   RotateCcw,
   Camera,
   Play,
-  UserCheck
+  UserCheck,
+  X
 } from "lucide-react";
 import { Participant, ReceiptItem, Tether } from "@/hooks/useUrunanState";
-import { parseReceiptWithGemini, MOCK_RECEIPTS, ParsedItem } from "@/lib/gemini";
+import { parseReceiptWithGemini, ParsedItem, GeminiReceiptResult } from "@/lib/gemini";
 import confetti from "canvas-confetti";
 
 interface SidebarProps {
@@ -26,10 +28,15 @@ interface SidebarProps {
   tethers: Tether[];
   individualTotals: Record<string, number>;
   totalReceiptCost: number;
+  itemSubtotal: number;
+  tax: number;
+  serviceCharge: number;
   isSplitComplete: boolean;
   isReadOnly: boolean;
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
+  setTax: (value: number) => void;
+  setServiceCharge: (value: number) => void;
   addParticipant: (name: string, emoji: string, color: string) => void;
   deleteParticipant: (id: string) => void;
   addItem: (name: string, price: number, quantity: number) => void;
@@ -41,8 +48,8 @@ interface SidebarProps {
   clearAll: () => void;
 }
 
-const EMOJI_PRESETS = ["🦊", "🐼", "🐨", "🦁", "🐯", "🐷", "🐸", "🐙", "🦖", "🦄", "🍕", "🥑", "☕️", "👑", "🚀", "🎩"];
-const COLOR_PRESETS = ["#ec4899", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#a855f7"];
+const EMOJI_PRESETS = ["🦊", "🐼", "🐨", "🦁", "🐯", "🐷", "🐸", "🐙", "🦖", "🦄", "🍕", "🥑", "☕️", "👑", "🚀", "🎩", "🐱", "🐶", "🐵", "🐧", "🧋", "🍔", "🍣", "🍩", "👻", "👽", "🤖", "💸", "🔥", "💎"];
+const COLOR_PRESETS = ["#ec4899", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#a855f7", "#ff7a00", "#a3e635", "#6366f1", "#14b8a6"];
 
 const formatRupiah = (amount: number) => {
   return "Rp" + Math.round(amount).toLocaleString("id-ID");
@@ -54,10 +61,15 @@ export default function Sidebar({
   tethers,
   individualTotals,
   totalReceiptCost,
+  itemSubtotal,
+  tax,
+  serviceCharge,
   isSplitComplete,
   isReadOnly,
   geminiApiKey,
   setGeminiApiKey,
+  setTax,
+  setServiceCharge,
   addParticipant,
   deleteParticipant,
   addItem,
@@ -70,7 +82,9 @@ export default function Sidebar({
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<"items" | "crew" | "summary">("items");
   const [showSettings, setShowSettings] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [qrCopied, setQrCopied] = useState(false);
 
   // Forms states
   const [newPartName, setNewPartName] = useState("");
@@ -84,16 +98,6 @@ export default function Sidebar({
   // Gemini processing states
   const [isParsingReceipt, setIsParsingReceipt] = useState(false);
   const [parsingError, setParsingError] = useState<string | null>(null);
-
-  // Trigger celebration confetti
-  const handleCelebrate = () => {
-    confetti({
-      particleCount: 120,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ["#ec4899", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"]
-    });
-  };
 
   // Add Participant
   const handleAddParticipantSubmit = (e: React.FormEvent) => {
@@ -126,7 +130,7 @@ export default function Sidebar({
     if (!file) return;
 
     if (!geminiApiKey) {
-      setParsingError("Please enter your Google AI Studio API key in Settings first!");
+      setParsingError("Masukkan API Key Google AI Studio di Settings terlebih dahulu!");
       setShowSettings(true);
       return;
     }
@@ -135,15 +139,18 @@ export default function Sidebar({
     setParsingError(null);
 
     try {
-      const parsedItems = await parseReceiptWithGemini(file, geminiApiKey);
-      if (parsedItems.length > 0) {
-        addParsedItems(parsedItems);
+      const result: GeminiReceiptResult = await parseReceiptWithGemini(file, geminiApiKey);
+      if (result.items.length > 0) {
+        addParsedItems(result.items);
         setActiveTab("items");
         // Pop nice sparkles confetti for parser success
         confetti({ particleCount: 30, spread: 40, colors: ["#06b6d4", "#8b5cf6"] });
       }
+      // Apply detected tax & service charge
+      if (result.tax > 0) setTax(result.tax);
+      if (result.serviceCharge > 0) setServiceCharge(result.serviceCharge);
     } catch (err: any) {
-      setParsingError(err.message || "Failed to process receipt image.");
+      setParsingError(err.message || "Gagal memproses gambar struk.");
     } finally {
       setIsParsingReceipt(false);
       // Reset input
@@ -151,21 +158,6 @@ export default function Sidebar({
     }
   };
 
-  // Trigger Mock OCR Presets
-  const handleMockReceiptTrigger = (presetIndex: number) => {
-    setIsParsingReceipt(true);
-    setParsingError(null);
-
-    setTimeout(() => {
-      const preset = MOCK_RECEIPTS[presetIndex];
-      if (preset) {
-        addParsedItems(preset.items);
-        setActiveTab("items");
-        handleCelebrate();
-      }
-      setIsParsingReceipt(false);
-    }, 1200); // realistic short delay
-  };
 
   // Handle Copy share link
   const handleCopyLink = () => {
@@ -173,6 +165,14 @@ export default function Sidebar({
     navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Handle Copy QR modal link
+  const handleCopyQRLink = () => {
+    const shareUrl = generateShareUrl();
+    navigator.clipboard.writeText(shareUrl);
+    setQrCopied(true);
+    setTimeout(() => setQrCopied(false), 2000);
   };
 
   // Calculate Gamified Titles
@@ -183,9 +183,12 @@ export default function Sidebar({
     }
 
     // Find min/max non-zero totals
-    const activeTotals = Object.entries(individualTotals)
-      .filter(([_, value]) => value > 0)
-      .map(([_, value]) => value);
+    const activeTotals: number[] = [];
+    for (const [_, value] of Object.entries(individualTotals)) {
+      if (value > 0) {
+        activeTotals.push(value);
+      }
+    }
 
     if (activeTotals.length === 0) return null;
 
@@ -209,11 +212,16 @@ export default function Sidebar({
       <div className="sidebar-header">
         <div>
           <h1 className="text-3xl font-extrabold logo-text tracking-tight flex items-center gap-2">
-            Urunan <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
+            urunan
           </h1>
-          <p className="logo-subtext">Tracker patungan physics-based yang asik</p>
+          <div className="logo-subtext">
+            <span className="logo-subtext-pronunciation">/urun·an/</span>
+            <span className="logo-subtext-pos">n</span>
+            <span className="logo-subtext-def">sumbangan; sokongan; iuran</span>
+          </div>
         </div>
         <button
+          type="button"
           onClick={() => setShowSettings(!showSettings)}
           className={`settings-toggle-btn ${showSettings ? 'active' : ''}`}
         >
@@ -234,12 +242,14 @@ export default function Sidebar({
             <input
               type="password"
               placeholder="Google AI Studio Gemini API Key"
+              aria-label="Google AI Studio Gemini API Key"
               value={geminiApiKey}
               onChange={(e) => setGeminiApiKey(e.target.value)}
               className="settings-input"
             />
             {geminiApiKey && (
               <button
+                type="button"
                 onClick={() => setGeminiApiKey("")}
                 className="settings-clear-btn"
               >
@@ -253,8 +263,9 @@ export default function Sidebar({
       {/* READ-ONLY CLONE WORKSPACE PANEL */}
       {isReadOnly && (
         <div className="readonly-banner">
-          <p className="readonly-desc">Lu lagi liat graph patungan view-only dari share link.</p>
+          <p className="readonly-desc">Kamu lagi liat graph patungan view-only dari share link.</p>
           <button
+            type="button"
             onClick={cloneSession}
             className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
           >
@@ -266,18 +277,21 @@ export default function Sidebar({
       {/* 2. Tabs Selector */}
       <div className="sidebar-tabs">
         <button
+          type="button"
           onClick={() => setActiveTab("items")}
           className={`tab-btn ${activeTab === "items" ? 'active-items' : ''}`}
         >
           <Receipt className="w-3.5 h-3.5" /> Item Orb ({items.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("crew")}
           className={`tab-btn ${activeTab === "crew" ? 'active-crew' : ''}`}
         >
           <Users className="w-3.5 h-3.5" /> Grup ({participants.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("summary")}
           className={`tab-btn ${activeTab === "summary" ? 'active-summary' : ''}`}
         >
@@ -294,58 +308,41 @@ export default function Sidebar({
 
             {/* AI Receipt Scanning Area */}
             {!isReadOnly && (
-              <div className="glass-panel ai-parser-panel">
-                <h3 className="ai-parser-title">
-                  <Camera className="w-3.5 h-3.5" /> AI Scanner Struk
-                </h3>
-
-                {/* File picker */}
-                <div>
-                  <label className="ocr-upload-label">
-                    <Camera className="w-4 h-4 text-cyan-400" />
-                    <span>Upload Struk</span>
+              <div className="glass-panel ai-parser-panel" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                  <h3 className="ai-parser-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Camera className="w-3.5 h-3.5" /> Scan Struk
+                  </h3>
+                  <label className="scanner-plus-btn">
+                    {isParsingReceipt ? (
+                      <span className="spinner" style={{ width: 14, height: 14 }} />
+                    ) : (
+                      <Plus className="w-4 h-4 text-cyan-400" />
+                    )}
                     <input
                       type="file"
                       accept="image/*"
+                      aria-label="Pilih file gambar struk untuk discan"
                       onChange={handleOCRFileChange}
                       disabled={isParsingReceipt}
-                      className="hidden"
+                      style={{ display: 'none' }}
                     />
                   </label>
                 </div>
 
-                {/* Instant Presets Mock flow */}
-                <div>
-                  <span className="presets-label">Preset Demo Instan:</span>
-                  <div className="presets-row">
-                    {MOCK_RECEIPTS.map((preset, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => handleMockReceiptTrigger(idx)}
-                        disabled={isParsingReceipt}
-                        className="preset-btn"
-                      >
-                        <Play className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
-                        <span>{preset.name.split(" ")[1]}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Error Banner */}
-                {parsingError && (
-                  <div className="error-banner">
-                    {parsingError}
+                {/* Inline loading text */}
+                {isParsingReceipt && (
+                  <div className="parser-loader-inline">
+                    <span className="parser-loader-text">
+                      Gemini lagi mikir… <Sparkles className="w-3 h-3 animate-pulse text-yellow-300" />
+                    </span>
                   </div>
                 )}
 
-                {/* Loading State Overlay */}
-                {isParsingReceipt && (
-                  <div className="parser-loader">
-                    <span className="spinner" />
-                    <span className="parser-loader-text">
-                      Gemini 2.5 Flash-Lite lagi mikir... <Sparkles className="w-3.5 h-3.5 animate-pulse text-yellow-300" />
-                    </span>
+                {/* Error Banner */}
+                {parsingError && (
+                  <div className="error-banner" style={{ marginTop: 0 }}>
+                    {parsingError}
                   </div>
                 )}
               </div>
@@ -360,6 +357,7 @@ export default function Sidebar({
                   <input
                     type="text"
                     placeholder="Nama item (mis. Nasi Goreng)"
+                    aria-label="Nama item baru"
                     value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     className="form-input"
@@ -369,6 +367,7 @@ export default function Sidebar({
                       type="number"
                       step="1000"
                       placeholder="Harga"
+                      aria-label="Harga item baru"
                       value={newItemPrice}
                       onChange={(e) => setNewItemPrice(e.target.value)}
                       className="form-input-number price"
@@ -377,6 +376,7 @@ export default function Sidebar({
                       type="number"
                       min="1"
                       placeholder="Jml"
+                      aria-label="Jumlah item baru"
                       value={newItemQty}
                       onChange={(e) => setNewItemQty(e.target.value)}
                       className="form-input-number qty"
@@ -421,13 +421,14 @@ export default function Sidebar({
                             )}
                             {splitCount > 0 && (
                               <span className="item-split-badge">
-                                Bagi {splitCount} org ({formatRupiah((item.price * item.quantity) / splitCount)} masing2)
+                                Bagi {splitCount} org ({formatRupiah((item.price * item.quantity) / splitCount)} per orang)
                               </span>
                             )}
                           </div>
                         </div>
                         {!isReadOnly && (
                           <button
+                            type="button"
                             onClick={() => deleteItem(item.id)}
                             className="delete-btn"
                           >
@@ -444,6 +445,69 @@ export default function Sidebar({
           </div>
         )}
 
+        {/* ================= TAB: ITEMS (continued) — Tax & Service Panel ================= */}
+        {activeTab === "items" && !isReadOnly && (
+          <div className="glass-panel tax-service-panel">
+            <h3 className="form-title">Pajak & Servis</h3>
+            <div className="tax-service-fields">
+              <div className="tax-service-field">
+                <label htmlFor="tax-input" className="tax-service-label">Pajak (Tax)</label>
+                <input
+                  id="tax-input"
+                  type="number"
+                  step="1000"
+                  min="0"
+                  placeholder="0"
+                  aria-label="Pajak (Tax)"
+                  value={tax || ""}
+                  onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
+                  className="form-input"
+                />
+              </div>
+              <div className="tax-service-field">
+                <label htmlFor="service-charge-input" className="tax-service-label">Biaya Servis</label>
+                <input
+                  id="service-charge-input"
+                  type="number"
+                  step="1000"
+                  min="0"
+                  placeholder="0"
+                  aria-label="Biaya Servis"
+                  value={serviceCharge || ""}
+                  onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
+                  className="form-input"
+                />
+              </div>
+            </div>
+            {(tax > 0 || serviceCharge > 0) && (
+              <div className="tax-service-summary">
+                Total tambahan: {formatRupiah(tax + serviceCharge)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Show tax/service read-only in items tab when in readonly mode */}
+        {activeTab === "items" && isReadOnly && (tax > 0 || serviceCharge > 0) && (
+          <div className="glass-panel tax-service-panel">
+            <h3 className="form-title">Pajak & Servis</h3>
+            <div className="tax-service-fields">
+              {tax > 0 && (
+                <div className="tax-service-field">
+                  <span className="tax-service-label">Pajak</span>
+                  <span className="tax-service-readonly-val">{formatRupiah(tax)}</span>
+                </div>
+              )}
+              {serviceCharge > 0 && (
+                <div className="tax-service-field">
+                  <span className="tax-service-label">Biaya Servis</span>
+                  <span className="tax-service-readonly-val">{formatRupiah(serviceCharge)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ================= TAB: CREW ================= */}
         {activeTab === "crew" && (
           <div className="list-section">
@@ -457,6 +521,7 @@ export default function Sidebar({
                   <input
                     type="text"
                     placeholder="Nama (mis. Budi)"
+                    aria-label="Nama anggota baru"
                     value={newPartName}
                     onChange={(e) => setNewPartName(e.target.value)}
                     className="form-input"
@@ -490,6 +555,7 @@ export default function Sidebar({
                           onClick={() => setNewPartColor(color)}
                           className={`color-select-btn ${newPartColor === color ? 'selected' : ''}`}
                           style={{ backgroundColor: color }}
+                          aria-label={`Warna ${color}`}
                         />
                       ))}
                     </div>
@@ -541,7 +607,6 @@ export default function Sidebar({
                                 </span>
                               )}
                             </h4>
-                            <p className="participant-total-label">Total Tagihan</p>
                           </div>
                         </div>
 
@@ -551,6 +616,7 @@ export default function Sidebar({
                           </span>
                           {!isReadOnly && (
                             <button
+                              type="button"
                               onClick={() => deleteParticipant(p.id)}
                               className="delete-btn"
                             >
@@ -575,28 +641,88 @@ export default function Sidebar({
             {/* Share Split Glass card */}
             <div className="glass-panel share-panel">
               <h3 className="share-panel-title">
-                <Share2 className="w-3.5 h-3.5" /> Share Tanpa Server
+                <Share2 className="w-3.5 h-3.5" /> Share Ke Kru
               </h3>
 
               <p className="share-desc">
-                Kirim link patungan ini lgsg ke temen-temen lu! Semua state disimpen di URL — <b>gak pake database, gak pake ribet bikin akun</b>.
+                Kirim link patungan ini langsung ke kru kamu! Semua state disimpen di URL (<b>gak pake database, gak pake ribet bikin akun</b>).
               </p>
 
-              <button
-                onClick={handleCopyLink}
-                className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" /> Kecopy di Clipboard!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" /> Copy Link Share
-                  </>
-                )}
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" /> Kecopy di Clipboard!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> Copy Link Share
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQRModal(true)}
+                  className="w-full neo-btn neo-btn-accent justify-center text-xs py-2"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-pink-400 animate-pulse" /> Tampilkan QR Code
+                </button>
+              </div>
             </div>
+
+            {/* QR Code Dialog Modal */}
+            {showQRModal && (
+              <button 
+                type="button"
+                className="qr-modal-overlay" 
+                onClick={() => setShowQRModal(false)}
+              >
+                <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()} style={{ "--glow-color": "rgba(139, 92, 246, 0.3)" } as any}>
+                  <div className="qr-modal-header">
+                    <h3 className="qr-modal-title logo-text">SCAN URUNAN</h3>
+                    <button type="button" className="qr-modal-close-btn" onClick={() => setShowQRModal(false)}>
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="qr-modal-body">
+                    <p className="qr-modal-desc">
+                      Minta kru kamu scan QR Code ini buat langsung buka kanvas physics di HP mereka!
+                    </p>
+                    <div className="qr-code-wrapper">
+                      <Image
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateShareUrl())}&color=07080c&bgcolor=ffffff&qzone=2`}
+                        alt="Urunan Share QR Code"
+                        className="qr-code-img"
+                        width={200}
+                        height={200}
+                        unoptimized
+                      />
+                    </div>
+                    <div className="qr-modal-url">
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Link: {generateShareUrl().substring(0, 43)}…
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopyQRLink}
+                        className={`qr-modal-url-copy-btn ${qrCopied ? 'copied' : ''}`}
+                        title="Copy Link Share"
+                      >
+                        {qrCopied ? (
+                          <Check className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                        ) : (
+                          <Copy className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            )}
 
             {/* Live split total bill and complete indicator */}
             <div className="glass-panel totals-card">
@@ -604,9 +730,33 @@ export default function Sidebar({
 
               <div className="summary-rows-container">
                 <div className="summary-row">
-                  <span>Total Tagihan:</span>
-                  <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
+                  <span>Subtotal Item:</span>
+                  <span className="summary-row-val">{formatRupiah(itemSubtotal)}</span>
                 </div>
+                {tax > 0 && (
+                  <div className="summary-row">
+                    <span>Pajak (Tax):</span>
+                    <span className="summary-row-val">{formatRupiah(tax)}</span>
+                  </div>
+                )}
+                {serviceCharge > 0 && (
+                  <div className="summary-row">
+                    <span>Biaya Servis:</span>
+                    <span className="summary-row-val">{formatRupiah(serviceCharge)}</span>
+                  </div>
+                )}
+                {(tax > 0 || serviceCharge > 0) && (
+                  <div className="summary-row summary-row-total">
+                    <span>Total Tagihan:</span>
+                    <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
+                  </div>
+                )}
+                {tax === 0 && serviceCharge === 0 && (
+                  <div className="summary-row">
+                    <span>Total Tagihan:</span>
+                    <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
+                  </div>
+                )}
                 <div className="summary-row">
                   <span>Status Patungan:</span>
                   {isSplitComplete ? (
@@ -633,6 +783,14 @@ export default function Sidebar({
                         <span className="breakdown-user">
                           <span>{p.emoji}</span>
                           <span>{p.name}</span>
+                          {(() => {
+                            const title = getGamifiedTitle(p.id);
+                            return title && (
+                              <span className={`title-badge ${title.className}`} style={{ marginLeft: '6px', fontSize: '12px', padding: '1px 5px' }}>
+                                {title.icon} {title.label}
+                              </span>
+                            );
+                          })()}
                         </span>
                         <span className="breakdown-val">{formatRupiah(total)}</span>
                       </div>
@@ -652,15 +810,6 @@ export default function Sidebar({
                 })}
               </div>
 
-              {/* Gamified celebration fireworks button */}
-              {isSplitComplete && (
-                <button
-                  onClick={handleCelebrate}
-                  className="w-full neo-btn neo-btn-accent justify-center text-xs py-2 mt-4"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-pink-400 animate-pulse" /> Party Waktu Bayar!
-                </button>
-              )}
             </div>
 
           </div>
@@ -672,12 +821,14 @@ export default function Sidebar({
       {!isReadOnly && (
         <div className="sidebar-footer">
           <button
+            type="button"
             onClick={resetToDefault}
             className="sidebar-footer-btn presets"
           >
             <RotateCcw className="w-3.5 h-3.5" /> Preset Bawaan
           </button>
           <button
+            type="button"
             onClick={clearAll}
             className="sidebar-footer-btn reset"
           >
