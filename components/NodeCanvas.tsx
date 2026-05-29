@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3-force";
 import { Participant, ReceiptItem, Tether } from "@/hooks/useUrunanState";
-import { Sparkles, Trash2, X } from "lucide-react";
+import { Info, Trash2, X } from "lucide-react";
 
 interface NodeCanvasProps {
   participants: Participant[];
@@ -13,6 +13,7 @@ interface NodeCanvasProps {
   addTether: (itemId: string, participantId: string) => void;
   clearTethers: (itemId: string) => void;
   isReadOnly: boolean;
+  clearAll?: () => void;
 }
 
 interface SimNode extends d3.SimulationNodeDatum {
@@ -44,7 +45,8 @@ export default function NodeCanvas({
   toggleTether,
   addTether,
   clearTethers,
-  isReadOnly
+  isReadOnly,
+  clearAll
 }: NodeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -59,6 +61,7 @@ export default function NodeCanvas({
   const [hoveredParticipantId, setHoveredParticipantId] = useState<string | null>(null);
   const [activeItemDetails, setActiveItemDetails] = useState<ReceiptItem | null>(null);
   const [isAboutToClear, setIsAboutToClear] = useState(false);
+  const [showGuide, setShowGuide] = useState(true);
 
   const simulationRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
 
@@ -263,7 +266,7 @@ export default function NodeCanvas({
       sim.stop();
       // Dummy check to satisfy naive static analysis linter
       if (typeof window !== "undefined" && (sim as any) === null) {
-        window.removeEventListener("resize", () => {});
+        window.removeEventListener("resize", () => { });
       }
     };
   }, [participants, items, tethers, dimensions, isMobile, partRadius, itemRadius]);
@@ -373,7 +376,7 @@ export default function NodeCanvas({
 
   const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
     if ((!dragLineSource && !draggedParticipantId) || !svgRef.current) return;
-    
+
     // Prevent standard scrolling behavior on mobile during drag operations
     if (e.cancelable) {
       e.preventDefault();
@@ -455,6 +458,19 @@ export default function NodeCanvas({
 
   return (
     <div ref={containerRef} className="canvas-container">
+
+      {/* Glassmorphic Reset Canvas Button */}
+      {!isReadOnly && clearAll && (
+        <button
+          type="button"
+          onClick={clearAll}
+          className="canvas-reset-btn"
+          title="Reset Kanvas"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          <span className="reset-btn-text">Reset Kanvas</span>
+        </button>
+      )}
 
       {/* SVG Canvas */}
       <svg
@@ -563,7 +579,7 @@ export default function NodeCanvas({
             stroke={hoveredParticipantId ? "#10b981" : isAboutToClear ? "#ef4444" : "#ffffff"}
             strokeWidth={3}
             strokeDasharray="5 5"
-            className="canvas-drag-preview animate-pulse"
+            className="canvas-drag-preview"
             style={{ filter: "drop-shadow(0 0 8px currentColor)" }}
           />
         )}
@@ -722,34 +738,41 @@ export default function NodeCanvas({
       </svg>
 
       {/* Manual Drag & Drop Guide / Help Banner */}
-      <div
-        className="canvas-guide-banner"
-        style={isAboutToClear ? {
-          borderColor: "rgba(239, 68, 68, 0.4)",
-          backgroundColor: "rgba(127, 29, 29, 0.35)",
-          boxShadow: "0 0 15px rgba(239, 68, 68, 0.2)",
-          transition: "all 0.2s ease"
-        } : {
-          transition: "all 0.2s ease"
-        }}
-      >
-        {isAboutToClear ? (
-          <>
-            <Trash2 className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-            <span style={{ color: "#f87171", fontWeight: "bold" }}>Lepas klik buat mutusin semua koneksi!</span>
-          </>
-        ) : (
-          <>
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span className="text-center">
-              {isMobile 
-                ? "Tarik garis dari Orb Item ke Avatar buat nyambungin, tarik ke kosong buat mutus."
-                : "Tarik Garis dari Orb Item ke Avatar Anggota buat nyambungin. Tarik ke ruang kosong buat mutus."
-              }
-            </span>
-          </>
-        )}
-      </div>
+      {(showGuide || isAboutToClear) && (
+        <div
+          className="canvas-guide-banner relative"
+          style={isAboutToClear ? {
+            borderColor: "rgba(239, 68, 68, 0.4)",
+            backgroundColor: "rgba(127, 29, 29, 0.35)",
+            boxShadow: "0 0 15px rgba(239, 68, 68, 0.2)",
+            transition: "all 0.2s ease"
+          } : {
+            transition: "all 0.2s ease"
+          }}
+        >
+          {isAboutToClear ? (
+            <>
+              <Trash2 className="banner-icon-trash" />
+              <span style={{ color: "#f87171", fontWeight: "bold" }}>Lepas klik buat mutusin semua koneksi!</span>
+            </>
+          ) : (
+            <>
+              <Info className="banner-icon-info" />
+              <span>
+                Tarik garis dari Orb Item ke Avatar buat sambungin. Tekan dua kali atau tarik ke ruang kosong buat mutus.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowGuide(false)}
+                className="canvas-guide-close"
+                aria-label="Tutup panduan"
+              >
+                <X />
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Read-Only Status Indicator */}
       {isReadOnly && (

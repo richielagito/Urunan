@@ -12,11 +12,10 @@ import {
   Trash2,
   Check,
   Copy,
-  RotateCcw,
   Camera,
-  Play,
   UserCheck,
-  X
+  X,
+  Store
 } from "lucide-react";
 import { Participant, ReceiptItem, Tether } from "@/hooks/useUrunanState";
 import { parseReceiptWithGemini, ParsedItem, GeminiReceiptResult } from "@/lib/gemini";
@@ -31,12 +30,18 @@ interface SidebarProps {
   itemSubtotal: number;
   tax: number;
   serviceCharge: number;
+  discount: number;
+  otherFees: number;
+  billName: string;
   isSplitComplete: boolean;
   isReadOnly: boolean;
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
   setTax: (value: number) => void;
   setServiceCharge: (value: number) => void;
+  setDiscount: (value: number) => void;
+  setOtherFees: (value: number) => void;
+  setBillName: (value: string) => void;
   addParticipant: (name: string, emoji: string, color: string) => void;
   deleteParticipant: (id: string) => void;
   addItem: (name: string, price: number, quantity: number) => void;
@@ -44,8 +49,6 @@ interface SidebarProps {
   addParsedItems: (parsed: ParsedItem[]) => void;
   cloneSession: () => void;
   generateShareUrl: () => string;
-  resetToDefault: () => void;
-  clearAll: () => void;
 }
 
 const EMOJI_PRESETS = ["🦊", "🐼", "🐨", "🦁", "🐯", "🐷", "🐸", "🐙", "🦖", "🦄", "🍕", "🥑", "☕️", "👑", "🚀", "🎩", "🐱", "🐶", "🐵", "🐧", "🧋", "🍔", "🍣", "🍩", "👻", "👽", "🤖", "💸", "🔥", "💎"];
@@ -64,21 +67,25 @@ export default function Sidebar({
   itemSubtotal,
   tax,
   serviceCharge,
+  discount,
+  otherFees,
+  billName,
   isSplitComplete,
   isReadOnly,
   geminiApiKey,
   setGeminiApiKey,
   setTax,
   setServiceCharge,
+  setDiscount,
+  setOtherFees,
+  setBillName,
   addParticipant,
   deleteParticipant,
   addItem,
   deleteItem,
   addParsedItems,
   cloneSession,
-  generateShareUrl,
-  resetToDefault,
-  clearAll
+  generateShareUrl
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<"items" | "crew" | "summary">("items");
   const [showSettings, setShowSettings] = useState(false);
@@ -98,6 +105,10 @@ export default function Sidebar({
   // Gemini processing states
   const [isParsingReceipt, setIsParsingReceipt] = useState(false);
   const [parsingError, setParsingError] = useState<string | null>(null);
+
+  const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null);
+  const [scanningProgressText, setScanningProgressText] = useState<string>('');
+  const [isScanningSuccess, setIsScanningSuccess] = useState<boolean>(false);
 
   // Add Participant
   const handleAddParticipantSubmit = (e: React.FormEvent) => {
@@ -137,23 +148,65 @@ export default function Sidebar({
 
     setIsParsingReceipt(true);
     setParsingError(null);
+    setIsScanningSuccess(false);
+
+    const previewUrl = URL.createObjectURL(file);
+    setUploadedImagePreview(previewUrl);
+
+    const stages = ["Memproses gambar...", "Mengupload struk...", "Menganalisa gambar...", "Mengekstrak harga...", "Menghitung Total..."];
+    let currentStage = 0;
+    setScanningProgressText(stages[0]);
+
+    const progressInterval = setInterval(() => {
+      currentStage++;
+      if (currentStage < stages.length) {
+        setScanningProgressText(stages[currentStage]);
+      }
+    }, 1200);
 
     try {
       const result: GeminiReceiptResult = await parseReceiptWithGemini(file, geminiApiKey);
+      clearInterval(progressInterval);
+
       if (result.items.length > 0) {
+        setScanningProgressText("Berhasil!");
+        setIsScanningSuccess(true);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
         addParsedItems(result.items);
         setActiveTab("items");
         // Pop nice sparkles confetti for parser success
         confetti({ particleCount: 30, spread: 40, colors: ["#06b6d4", "#8b5cf6"] });
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
+
       // Apply detected tax & service charge
       if (result.tax > 0) setTax(result.tax);
       if (result.serviceCharge > 0) setServiceCharge(result.serviceCharge);
+      
+      // Apply detected discount
+      if (result.discount > 0) setDiscount(result.discount);
+      
+      // Apply detected other fees (sum all fee amounts)
+      if (result.otherFees && result.otherFees.length > 0) {
+        const totalOtherFees = result.otherFees.reduce((sum, fee) => sum + fee.amount, 0);
+        if (totalOtherFees > 0) setOtherFees(totalOtherFees);
+      }
+
+      // Apply detected bill name (auto-fill if not already set)
+      if (result.billName && !billName) {
+        setBillName(result.billName);
+      }
     } catch (err: any) {
+      clearInterval(progressInterval);
       setParsingError(err.message || "Gagal memproses gambar struk.");
     } finally {
+      clearInterval(progressInterval);
       setIsParsingReceipt(false);
-      // Reset input
+      setIsScanningSuccess(false);
+      setUploadedImagePreview(null);
+      URL.revokeObjectURL(previewUrl);
       e.target.value = "";
     }
   };
@@ -274,6 +327,36 @@ export default function Sidebar({
         </div>
       )}
 
+      {/* Bill Name Display / Input */}
+      {!isReadOnly ? (
+        <div className="bill-name-bar">
+          <Store className="w-3.5 h-3.5 bill-name-icon" />
+          <input
+            type="text"
+            placeholder="Nama Bill (mis. Restoran Padang Sederhana)"
+            aria-label="Nama bill atau restoran"
+            value={billName}
+            onChange={(e) => setBillName(e.target.value)}
+            className="bill-name-input"
+          />
+          {billName && (
+            <button
+              type="button"
+              onClick={() => setBillName("")}
+              className="bill-name-clear"
+              aria-label="Hapus nama bill"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      ) : billName ? (
+        <div className="bill-name-bar bill-name-bar-readonly">
+          <Store className="w-3.5 h-3.5 bill-name-icon" />
+          <span className="bill-name-display">{billName}</span>
+        </div>
+      ) : null}
+
       {/* 2. Tabs Selector */}
       <div className="sidebar-tabs">
         <button
@@ -281,7 +364,7 @@ export default function Sidebar({
           onClick={() => setActiveTab("items")}
           className={`tab-btn ${activeTab === "items" ? 'active-items' : ''}`}
         >
-          <Receipt className="w-3.5 h-3.5" /> Item Orb ({items.length})
+          <Receipt className="w-3.5 h-3.5" /> Item ({items.length})
         </button>
         <button
           type="button"
@@ -308,44 +391,64 @@ export default function Sidebar({
 
             {/* AI Receipt Scanning Area */}
             {!isReadOnly && (
-              <div className="glass-panel ai-parser-panel" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                  <h3 className="ai-parser-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Camera className="w-3.5 h-3.5" /> Scan Struk
-                  </h3>
-                  <label className="scanner-plus-btn">
-                    {isParsingReceipt ? (
-                      <span className="spinner" style={{ width: 14, height: 14 }} />
-                    ) : (
-                      <Plus className="w-4 h-4 text-cyan-400" />
+              <label
+                className={`glass-panel ai-parser-panel ${isParsingReceipt ? 'loading' : ''} ${isScanningSuccess ? 'success' : ''}`}
+                style={{
+                  cursor: isParsingReceipt ? 'not-allowed' : 'pointer',
+                  borderStyle: isParsingReceipt || isScanningSuccess ? 'solid' : 'dashed',
+                  borderColor: isScanningSuccess ? 'rgba(16, 185, 129, 0.5)' : undefined
+                }}
+              >
+                {!isParsingReceipt && !isScanningSuccess ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                    <Camera className="w-8 h-8 text-cyan-400" />
+                    <h3 className="ai-parser-title" style={{ margin: 0 }}>
+                      Scan Struk
+                    </h3>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%' }}>
+                    {uploadedImagePreview && (
+                      <div className="scanner-image-preview-container">
+                        <img src={uploadedImagePreview} alt="Receipt preview" className="scanner-image-preview" />
+                        {!isScanningSuccess && <div className="scanner-shimmer-overlay"></div>}
+                      </div>
                     )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      aria-label="Pilih file gambar struk untuk discan"
-                      onChange={handleOCRFileChange}
-                      disabled={isParsingReceipt}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-                </div>
 
-                {/* Inline loading text */}
-                {isParsingReceipt && (
-                  <div className="parser-loader-inline">
-                    <span className="parser-loader-text">
-                      Gemini lagi mikir… <Sparkles className="w-3 h-3 animate-pulse text-yellow-300" />
-                    </span>
+                    {isScanningSuccess ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 'bold' }}>
+                        <Check className="w-5 h-5" />
+                        <span>{scanningProgressText}</span>
+                      </div>
+                    ) : (
+                      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                        <span className="parser-loader-text" style={{ fontSize: '12px' }}>
+                          {scanningProgressText}
+                        </span>
+                        <div className="scanner-progress-bar-container">
+                          <div className="scanner-progress-bar-fill"></div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  aria-label="Pilih file gambar struk untuk discan"
+                  onChange={handleOCRFileChange}
+                  disabled={isParsingReceipt}
+                  style={{ display: 'none' }}
+                />
 
                 {/* Error Banner */}
                 {parsingError && (
-                  <div className="error-banner" style={{ marginTop: 0 }}>
+                  <div className="error-banner" style={{ marginTop: '8px' }}>
                     {parsingError}
                   </div>
                 )}
-              </div>
+              </label>
             )}
 
             {/* Manual Add Item Form */}
@@ -445,10 +548,10 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* ================= TAB: ITEMS (continued) — Tax & Service Panel ================= */}
+        {/* ================= TAB: ITEMS (continued) — Tax, Service, Discount & Other Fees Panel ================= */}
         {activeTab === "items" && !isReadOnly && (
           <div className="glass-panel tax-service-panel">
-            <h3 className="form-title">Pajak & Servis</h3>
+            <h3 className="form-title">Pajak, Servis, & Lainnya</h3>
             <div className="tax-service-fields">
               <div className="tax-service-field">
                 <label htmlFor="tax-input" className="tax-service-label">Pajak (Tax)</label>
@@ -479,18 +582,48 @@ export default function Sidebar({
                 />
               </div>
             </div>
-            {(tax > 0 || serviceCharge > 0) && (
+            <div className="tax-service-fields">
+              <div className="tax-service-field">
+                <label htmlFor="discount-input" className="tax-service-label discount-label">Diskon</label>
+                <input
+                  id="discount-input"
+                  type="number"
+                  step="1000"
+                  min="0"
+                  placeholder="0"
+                  aria-label="Diskon"
+                  value={discount || ""}
+                  onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                  className="form-input discount-input"
+                />
+              </div>
+              <div className="tax-service-field">
+                <label htmlFor="other-fees-input" className="tax-service-label">Biaya Lain</label>
+                <input
+                  id="other-fees-input"
+                  type="number"
+                  step="1000"
+                  min="0"
+                  placeholder="0"
+                  aria-label="Biaya Lain"
+                  value={otherFees || ""}
+                  onChange={(e) => setOtherFees(parseFloat(e.target.value) || 0)}
+                  className="form-input"
+                />
+              </div>
+            </div>
+            {(tax > 0 || serviceCharge > 0 || discount > 0 || otherFees > 0) && (
               <div className="tax-service-summary">
-                Total tambahan: {formatRupiah(tax + serviceCharge)}
+                Total tambahan: {formatRupiah(tax + serviceCharge + otherFees - discount)}
               </div>
             )}
           </div>
         )}
 
-        {/* Show tax/service read-only in items tab when in readonly mode */}
-        {activeTab === "items" && isReadOnly && (tax > 0 || serviceCharge > 0) && (
+        {/* Show tax/service/discount/fees read-only in items tab when in readonly mode */}
+        {activeTab === "items" && isReadOnly && (tax > 0 || serviceCharge > 0 || discount > 0 || otherFees > 0) && (
           <div className="glass-panel tax-service-panel">
-            <h3 className="form-title">Pajak & Servis</h3>
+            <h3 className="form-title">Pajak, Servis, & Lainnya</h3>
             <div className="tax-service-fields">
               {tax > 0 && (
                 <div className="tax-service-field">
@@ -505,6 +638,22 @@ export default function Sidebar({
                 </div>
               )}
             </div>
+            {(discount > 0 || otherFees > 0) && (
+              <div className="tax-service-fields">
+                {discount > 0 && (
+                  <div className="tax-service-field">
+                    <span className="tax-service-label discount-label">Diskon</span>
+                    <span className="tax-service-readonly-val discount-val">-{formatRupiah(discount)}</span>
+                  </div>
+                )}
+                {otherFees > 0 && (
+                  <div className="tax-service-field">
+                    <span className="tax-service-label">Biaya Lain</span>
+                    <span className="tax-service-readonly-val">{formatRupiah(otherFees)}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -676,9 +825,8 @@ export default function Sidebar({
 
             {/* QR Code Dialog Modal */}
             {showQRModal && (
-              <button 
-                type="button"
-                className="qr-modal-overlay" 
+              <div
+                className="qr-modal-overlay"
                 onClick={() => setShowQRModal(false)}
               >
                 <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()} style={{ "--glow-color": "rgba(139, 92, 246, 0.3)" } as any}>
@@ -721,7 +869,7 @@ export default function Sidebar({
                     </div>
                   </div>
                 </div>
-              </button>
+              </div>
             )}
 
             {/* Live split total bill and complete indicator */}
@@ -745,18 +893,22 @@ export default function Sidebar({
                     <span className="summary-row-val">{formatRupiah(serviceCharge)}</span>
                   </div>
                 )}
-                {(tax > 0 || serviceCharge > 0) && (
-                  <div className="summary-row summary-row-total">
-                    <span>Total Tagihan:</span>
-                    <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
-                  </div>
-                )}
-                {tax === 0 && serviceCharge === 0 && (
+                {otherFees > 0 && (
                   <div className="summary-row">
-                    <span>Total Tagihan:</span>
-                    <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
+                    <span>Biaya Lain:</span>
+                    <span className="summary-row-val">{formatRupiah(otherFees)}</span>
                   </div>
                 )}
+                {discount > 0 && (
+                  <div className="summary-row">
+                    <span>Diskon:</span>
+                    <span className="summary-row-val discount-val">-{formatRupiah(discount)}</span>
+                  </div>
+                )}
+                <div className="summary-row summary-row-total">
+                  <span>Total Tagihan:</span>
+                  <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
+                </div>
                 <div className="summary-row">
                   <span>Status Patungan:</span>
                   {isSplitComplete ? (
@@ -786,7 +938,7 @@ export default function Sidebar({
                           {(() => {
                             const title = getGamifiedTitle(p.id);
                             return title && (
-                              <span className={`title-badge ${title.className}`} style={{ marginLeft: '6px', fontSize: '12px', padding: '1px 5px' }}>
+                              <span className={`title-badge ${title.className} rekap-title-badge`}>
                                 {title.icon} {title.label}
                               </span>
                             );
@@ -817,25 +969,6 @@ export default function Sidebar({
 
       </div>
 
-      {/* 4. Footer & Session Reset Actions */}
-      {!isReadOnly && (
-        <div className="sidebar-footer">
-          <button
-            type="button"
-            onClick={resetToDefault}
-            className="sidebar-footer-btn presets"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Preset Bawaan
-          </button>
-          <button
-            type="button"
-            onClick={clearAll}
-            className="sidebar-footer-btn reset"
-          >
-            <Trash2 className="w-3.5 h-3.5" /> Reset Kanvas
-          </button>
-        </div>
-      )}
 
     </aside>
   );

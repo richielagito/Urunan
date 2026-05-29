@@ -1,7 +1,14 @@
 /**
  * Gemini Receipt OCR Parsing Service
  * Calls the Google Gemini 2.5 Flash-Lite API directly from the client.
+ * 
+ * Features:
+ * - Extracts items, tax, service charge, discount, other fees, and bill name
+ * - Client-side image preprocessing for improved OCR accuracy
+ * - Optimized prompts for Indonesian receipt formats
  */
+
+import { preprocessReceiptImage } from "./imagePreprocess";
 
 export interface ParsedItem {
   name: string;
@@ -9,67 +16,115 @@ export interface ParsedItem {
   quantity: number;
 }
 
+export interface OtherFee {
+  label: string;
+  amount: number;
+}
+
 export interface GeminiReceiptResult {
   items: ParsedItem[];
   tax: number;
   serviceCharge: number;
+  discount: number;
+  otherFees: OtherFee[];
+  billName: string;
 }
 
 /**
- * Converts a File object to a base64 encoded string and extracts the mimeType.
+ * Converts a File or Blob to a base64 encoded string and extracts the mimeType.
  */
-function fileToBase64(file: File): Promise<{ mimeType: string; base64Data: string }> {
+function fileToBase64(source: File | Blob): Promise<{ mimeType: string; base64Data: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
         const parts = reader.result.split(",");
         const base64Data = parts[1] || "";
-        const mimeType = file.type || "image/jpeg";
+        const mimeType = (source instanceof File ? source.type : source.type) || "image/jpeg";
         resolve({ mimeType, base64Data });
       } else {
         reject(new Error("Failed to read file as base64 string"));
       }
     };
     reader.onerror = (error) => reject(error);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(source);
   });
 }
 
 /**
  * Parses a receipt image file using the Gemini 2.5 Flash-Lite API.
- * Returns parsed items along with detected tax and service charge amounts.
+ * Applies client-side image preprocessing before sending to improve OCR accuracy.
+ * Returns parsed items along with detected tax, service charge, discount, other fees, and bill name.
  */
 export async function parseReceiptWithGemini(file: File, apiKey: string): Promise<GeminiReceiptResult> {
   if (!apiKey) {
     throw new Error("Gemini API Key is required. Please set it in Settings.");
   }
 
-  // 1. Convert file to base64 inline data
-  const { mimeType, base64Data } = await fileToBase64(file);
+  // 1. Preprocess image for better OCR accuracy
+  let processedImage: File | Blob;
+  try {
+    processedImage = await preprocessReceiptImage(file);
+  } catch (err) {
+    // If preprocessing fails, fall back to the original file
+    console.warn("Image preprocessing failed, using original:", err);
+    processedImage = file;
+  }
 
-  // 2. Prepare the endpoint
+  // 2. Convert to base64 inline data
+  const { mimeType, base64Data } = await fileToBase64(processedImage);
+
+  // 3. Prepare the endpoint
   const modelName = "gemini-2.5-flash-lite";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
-  // 3. Assemble system instructions and multimodal prompt
-  const systemInstruction = 
-    "You are an expert receipt parsing assistant. Your task is to look at the receipt image and extract " +
-    "individual purchased items, plus any tax and service charge amounts. " +
-    "For items: extract the item name, its unit price (or total price of the line divided by quantity), " +
-    "and the quantity. Convert all item names to title case and keep them concise. " +
-    "For tax: look for lines labeled 'tax', 'pajak', 'PPN', 'PB1', 'VAT', or similar. Return the total tax amount as a number. " +
-    "For service charge: look for lines labeled 'service', 'service charge', 'biaya layanan', 'SC', or similar. Return the total service charge amount as a number. " +
-    "If tax or service charge is not found on the receipt, return 0 for that field. " +
-    "Do NOT include tax, service charge, tips, discounts, or total/subtotal lines as item lines.";
+  // 4. Assemble system instructions and multimodal prompt
+  const systemInstruction =
+    "You are an expert receipt parser specializing in Indonesian restaurant bills (struk/bon). " +
+    "Your task is to extract structured data from receipt images with high precision.\n\n" +
+    "EXTRACTION RULES:\n\n" +
+    "1. BILL NAME (billName):\n" +
+    "   - Extract the restaurant or establishment name from the receipt header (usually the first 1-3 lines of text, often in larger font or bold).\n" +
+    "   - Common formats: 'RESTORAN ABC', 'Cafe XYZ', 'Warung Makan Sederhana', etc.\n" +
+    "   - Do NOT include addresses, phone numbers, or taglines — only the business name.\n" +
+    "   - If you cannot identify the name, return an empty string.\n\n" +
+    "2. ITEMS:\n" +
+    "   - Extract each purchased item with its name, unit price, and quantity.\n" +
+    "   - Convert item names to Title Case and keep them concise (max ~30 chars).\n" +
+    "   - If the receipt shows a total line price and quantity, compute the unit price = total / quantity.\n" +
+    "   - Merge multi-line items (e.g. item name on one line, price on the next) into a single item.\n" +
+    "   - Do NOT include modifier lines (e.g. 'Extra Cheese', 'Level 5') as separate items — append them to the parent item name.\n" +
+    "   - Do NOT include subtotal, total, change, payment method, or summary lines as items.\n" +
+    "   - Handle Indonesian number formats: periods as thousand separators (e.g. '135.000' = 135000), commas as decimals.\n\n" +
+    "3. TAX (tax):\n" +
+    "   - Look for lines labeled: 'tax', 'pajak', 'PPN', 'PB1', 'VAT', 'PPh', or similar.\n" +
+    "   - Return the ABSOLUTE tax amount as a number (not percentage). Return 0 if not found.\n\n" +
+    "4. SERVICE CHARGE (serviceCharge):\n" +
+    "   - Look for lines labeled: 'service', 'service charge', 'biaya layanan', 'SC', or similar.\n" +
+    "   - Return the ABSOLUTE service charge amount as a number. Return 0 if not found.\n\n" +
+    "5. DISCOUNT (discount):\n" +
+    "   - Look for lines labeled: 'diskon', 'discount', 'potongan', 'promo', 'voucher', 'member disc', 'potongan harga', or similar.\n" +
+    "   - Discounts are usually shown as negative values or with a minus sign on the receipt.\n" +
+    "   - Return the discount as a POSITIVE number (absolute value). Return 0 if not found.\n" +
+    "   - If there are multiple discount lines, sum them all.\n\n" +
+    "6. OTHER FEES (otherFees):\n" +
+    "   - Look for additional charges that are NOT tax or service charge:\n" +
+    "     'pembulatan' (rounding), 'delivery', 'ongkir' (shipping), 'kemasan' (packaging),\n" +
+    "     'takeaway', 'biaya platform', 'tip', 'gratuity', or any other labeled fee.\n" +
+    "   - Return each as an object with { label, amount }.\n" +
+    "   - Use a clean, concise label for each fee.\n" +
+    "   - If none found, return an empty array.\n\n" +
+    "IMPORTANT: Be precise with numbers. Double-check that item prices × quantities are reasonable " +
+    "and match what's visible on the receipt. When in doubt about a faded or unclear character, " +
+    "make your best inference from context (e.g. if other items are in thousands, a '1' is likely '1000').";
 
   const body = {
     contents: [
       {
         parts: [
           {
-            text: "Extract all items, quantities, prices, tax, and service charge from this receipt image. " +
-                  "Return only the structured JSON representation matching the requested schema."
+            text: "Parse this receipt image completely. Extract the restaurant name, all items with prices, tax, service charge, " +
+                  "any discounts, and any other miscellaneous fees. Return the structured JSON matching the schema."
           },
           {
             inlineData: {
@@ -92,23 +147,27 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
       responseSchema: {
         type: "OBJECT",
         properties: {
+          billName: {
+            type: "STRING",
+            description: "Restaurant or establishment name from the receipt header. Empty string if not identifiable."
+          },
           items: {
             type: "ARRAY",
-            description: "List of items parsed from the receipt",
+            description: "List of purchased items parsed from the receipt",
             items: {
               type: "OBJECT",
               properties: {
                 name: {
                   type: "STRING",
-                  description: "Clean, brief name of the item (e.g. 'Wood-Fired Pizza')"
+                  description: "Clean, concise item name in Title Case (e.g. 'Nasi Goreng Spesial')"
                 },
                 price: {
                   type: "NUMBER",
-                  description: "The individual price of a single unit of this item"
+                  description: "Unit price of a single item (if receipt shows total, divide by quantity)"
                 },
                 quantity: {
                   type: "NUMBER",
-                  description: "The number of units purchased (default is 1)"
+                  description: "Number of units purchased (default 1)"
                 }
               },
               required: ["name", "price", "quantity"]
@@ -116,19 +175,41 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
           },
           tax: {
             type: "NUMBER",
-            description: "Total tax amount on the receipt (e.g. PPN, PB1, VAT). Return 0 if not found."
+            description: "Total tax amount (PPN/PB1/VAT) as absolute number. Return 0 if not found."
           },
           serviceCharge: {
             type: "NUMBER",
-            description: "Total service charge amount on the receipt. Return 0 if not found."
+            description: "Total service charge as absolute number. Return 0 if not found."
+          },
+          discount: {
+            type: "NUMBER",
+            description: "Total discount as a POSITIVE number (absolute value). Return 0 if not found."
+          },
+          otherFees: {
+            type: "ARRAY",
+            description: "List of other miscellaneous fees (packaging, delivery, rounding, etc.). Empty array if none.",
+            items: {
+              type: "OBJECT",
+              properties: {
+                label: {
+                  type: "STRING",
+                  description: "Clean label for the fee (e.g. 'Pembulatan', 'Biaya Kemasan')"
+                },
+                amount: {
+                  type: "NUMBER",
+                  description: "The fee amount as a number"
+                }
+              },
+              required: ["label", "amount"]
+            }
           }
         },
-        required: ["items", "tax", "serviceCharge"]
+        required: ["items", "tax", "serviceCharge", "discount", "otherFees", "billName"]
       }
     }
   };
 
-  // 4. Send request
+  // 5. Send request
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -145,7 +226,7 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
 
   const result = await response.json();
   
-  // 5. Extract JSON string from response
+  // 6. Extract JSON string from response
   try {
     const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!textResponse) {
@@ -157,7 +238,10 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
       return {
         items: parsedJson.items,
         tax: parsedJson.tax || 0,
-        serviceCharge: parsedJson.serviceCharge || 0
+        serviceCharge: parsedJson.serviceCharge || 0,
+        discount: parsedJson.discount || 0,
+        otherFees: Array.isArray(parsedJson.otherFees) ? parsedJson.otherFees : [],
+        billName: (parsedJson.billName || "").trim()
       };
     } else {
       throw new Error("Invalid response format: 'items' array missing");
