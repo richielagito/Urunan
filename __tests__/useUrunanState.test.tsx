@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useUrunanState } from "@/hooks/useUrunanState";
+import LZString from "lz-string";
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -291,6 +292,67 @@ describe("useUrunanState Hook - Initialization and Basic Actions", () => {
       expect(result.current.discount).toBe(0);
       expect(result.current.otherFees).toBe(0);
       expect(result.current.billName).toBe("");
+    });
+  });
+
+  describe("Serialization and Sharing", () => {
+    it("should generate a valid compressed share URL", () => {
+      const { result } = renderHook(() => useUrunanState());
+
+      act(() => {
+        result.current.clearAll();
+      });
+      act(() => {
+        result.current.addParticipant("Alice", "🦊", "#ec4899");
+        result.current.addItem("Pizza", 100000, 1);
+      });
+
+      let shareUrl = "";
+      act(() => {
+        shareUrl = result.current.generateShareUrl();
+      });
+
+      expect(shareUrl).toContain("http://localhost:3000/app#share=");
+      
+      const compressed = shareUrl.split("#share=")[1];
+      const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
+      expect(decompressed).toBeDefined();
+      
+      const parsed = JSON.parse(decompressed!);
+      expect(parsed).toHaveLength(5);
+      expect(parsed[0][0][1]).toBe("Alice");
+      expect(parsed[1][0][1]).toBe("Pizza");
+    });
+
+    it("should initialize in read-only mode from sharing URL hash", () => {
+      const customState = [
+        [["p1", "Alice", "🦊", "#ec4899"]],
+        [["i1", "Pizza", 100000, 1]],
+        [["i1", ["p1"]]],
+        [10000, 5000, 2000, 1000],
+        "Toko Pizza"
+      ];
+      const json = JSON.stringify(customState);
+      const compressed = LZString.compressToEncodedURIComponent(json);
+      
+      locationMock.hash = `#share=${compressed}`;
+
+      const { result } = renderHook(() => useUrunanState());
+
+      expect(result.current.isInitialized).toBe(true);
+      expect(result.current.isReadOnly).toBe(true);
+      expect(result.current.billName).toBe("Toko Pizza");
+      expect(result.current.tax).toBe(10000);
+      expect(result.current.serviceCharge).toBe(5000);
+      expect(result.current.discount).toBe(2000);
+      expect(result.current.otherFees).toBe(1000);
+      expect(result.current.participants).toHaveLength(1);
+      expect(result.current.participants[0].name).toBe("Alice");
+      
+      act(() => {
+        result.current.cloneSession();
+      });
+      expect(result.current.isReadOnly).toBe(false);
     });
   });
 });
