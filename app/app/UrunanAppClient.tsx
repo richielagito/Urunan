@@ -1,5 +1,6 @@
 "use client";
 
+import "@/lib/i18n";
 import React, { useSyncExternalStore, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import ShareView from "@/components/ShareView";
