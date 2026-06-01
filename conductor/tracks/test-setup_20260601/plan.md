@@ -21,9 +21,9 @@ This plan details the steps required to set up Vitest and write comprehensive un
     - [x] Write unit tests for default state values of participants, items, tethers, tax, and other fees.
     - [x] Write unit tests for adding and deleting participants.
     - [x] Write unit tests for adding and deleting receipt items.
-- [~] Task: Write tether and calculations tests
-    - [ ] Write unit tests for tether modification actions.
-    - [ ] Write unit tests verifying running totals, individual allocations, tax splits, and total bill calculations.
+- [x] Task: Write tether and calculations tests (a6a1e5e)
+    - [x] Write unit tests for tether modification actions.
+    - [x] Write unit tests verifying running totals, individual allocations, tax splits, and total bill calculations.
 - [ ] Task: Write serialization and sharing tests
     - [ ] Write unit tests for state serialization and deserialization.
     - [ ] Write unit tests validating sharing URL generation and backward compatibility support.
