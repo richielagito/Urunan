@@ -161,4 +161,136 @@ describe("useUrunanState Hook - Initialization and Basic Actions", () => {
     expect(result.current.items[3].name).toBe("Bakso");
     expect(result.current.items[4].name).toBe("Mie Ayam");
   });
+
+  describe("Tethers and Cost Calculations", () => {
+    it("should allow toggleTether, addTether, removeTether, and clearTethers", () => {
+      const { result } = renderHook(() => useUrunanState());
+
+      act(() => {
+        result.current.clearTethers("i1");
+      });
+      expect(result.current.tethers.some(t => t.itemId === "i1")).toBe(false);
+
+      act(() => {
+        result.current.addTether("i1", "p1");
+      });
+      expect(result.current.tethers.find(t => t.itemId === "i1")?.participantIds).toContain("p1");
+
+      act(() => {
+        result.current.toggleTether("i1", "p1");
+      });
+      expect(result.current.tethers.some(t => t.itemId === "i1")).toBe(false);
+
+      act(() => {
+        result.current.toggleTether("i1", "p2");
+      });
+      expect(result.current.tethers.find(t => t.itemId === "i1")?.participantIds).toContain("p2");
+
+      act(() => {
+        result.current.removeTether("i1", "p2");
+      });
+      expect(result.current.tethers.some(t => t.itemId === "i1")).toBe(false);
+    });
+
+    it("should correctly compute individualTotals with proportional charges and discounts", () => {
+      const customState = {
+        participants: [
+          { id: "p1", name: "Alice", emoji: "🦊", color: "#ec4899" },
+          { id: "p2", name: "Bob", emoji: "🐼", color: "#3b82f6" },
+        ],
+        items: [
+          { id: "i1", name: "Pizza", price: 100000, quantity: 1 },
+          { id: "i2", name: "Wings", price: 50000, quantity: 1 },
+        ],
+        tethers: [
+          { itemId: "i1", participantIds: ["p1"] },
+          { itemId: "i2", participantIds: ["p1", "p2"] },
+        ],
+        tax: 15000,
+        serviceCharge: 7500,
+        discount: 22500,
+        otherFees: 0,
+        billName: "Calculation Test",
+      };
+      localStorageMock.setItem("urunan_session_state", JSON.stringify(customState));
+
+      const { result } = renderHook(() => useUrunanState());
+
+      expect(result.current.itemSubtotal).toBe(150000);
+      expect(result.current.totalReceiptCost).toBe(150000);
+      expect(result.current.individualTotals["p1"]).toBe(125000);
+      expect(result.current.individualTotals["p2"]).toBe(25000);
+      expect(result.current.isSplitComplete).toBe(true);
+    });
+
+    it("should split tax/service/fees/discounts proportionally when extra charges are non-zero", () => {
+      const customState = {
+        participants: [
+          { id: "p1", name: "Alice", emoji: "🦊", color: "#ec4899" },
+          { id: "p2", name: "Bob", emoji: "🐼", color: "#3b82f6" },
+        ],
+        items: [
+          { id: "i1", name: "Pizza", price: 100000, quantity: 1 },
+          { id: "i2", name: "Wings", price: 50000, quantity: 1 },
+        ],
+        tethers: [
+          { itemId: "i1", participantIds: ["p1"] },
+          { itemId: "i2", participantIds: ["p1", "p2"] },
+        ],
+        tax: 15000,
+        serviceCharge: 15000,
+        discount: 0,
+        otherFees: 0,
+        billName: "Proportional Test",
+      };
+      localStorageMock.setItem("urunan_session_state", JSON.stringify(customState));
+
+      const { result } = renderHook(() => useUrunanState());
+
+      expect(result.current.itemSubtotal).toBe(150000);
+      expect(result.current.totalReceiptCost).toBe(180000);
+      expect(result.current.individualTotals["p1"]).toBe(150000);
+      expect(result.current.individualTotals["p2"]).toBe(30000);
+    });
+
+    it("should divide extra charges equally if no items are tethered yet", () => {
+      const customState = {
+        participants: [
+          { id: "p1", name: "Alice", emoji: "🦊", color: "#ec4899" },
+          { id: "p2", name: "Bob", emoji: "🐼", color: "#3b82f6" },
+        ],
+        items: [],
+        tethers: [],
+        tax: 10000,
+        serviceCharge: 0,
+        discount: 0,
+        otherFees: 0,
+        billName: "Empty Tethers Test",
+      };
+      localStorageMock.setItem("urunan_session_state", JSON.stringify(customState));
+
+      const { result } = renderHook(() => useUrunanState());
+
+      expect(result.current.individualTotals["p1"]).toBe(5000);
+      expect(result.current.individualTotals["p2"]).toBe(5000);
+      expect(result.current.isSplitComplete).toBe(false);
+    });
+
+    it("should allow clearAll to reset all state", () => {
+      const { result } = renderHook(() => useUrunanState());
+
+      act(() => {
+        result.current.clearAll();
+      });
+
+      expect(result.current.participants).toHaveLength(0);
+      expect(result.current.items).toHaveLength(0);
+      expect(result.current.tethers).toHaveLength(0);
+      expect(result.current.tax).toBe(0);
+      expect(result.current.serviceCharge).toBe(0);
+      expect(result.current.discount).toBe(0);
+      expect(result.current.otherFees).toBe(0);
+      expect(result.current.billName).toBe("");
+    });
+  });
 });
