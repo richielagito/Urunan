@@ -6,7 +6,7 @@ This plan details the steps required to set up Vitest and write comprehensive un
 
 ## Phase 1: Setup Testing Framework
 
-- [ ] Task: Install and configure testing dependencies
+- [~] Task: Install and configure testing dependencies
     - [ ] Install `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, and `jsdom` as devDependencies.
     - [ ] Configure `vitest.config.ts` to support React components and the JSDom environment.
     - [ ] Add `test`, `test:watch`, and `test:coverage` scripts to `package.json`.
