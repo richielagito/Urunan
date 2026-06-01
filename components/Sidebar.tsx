@@ -743,9 +743,9 @@ export default function Sidebar({
                           <div
                             className="participant-avatar-badge"
                             style={{
-                              ["--border-color" as any]: p.color,
+                              ["--border-color" as string]: p.color,
                               boxShadow: `0 0 8px ${p.color}40`
-                            }}
+                            } as React.CSSProperties}
                           >
                             {p.emoji}
                           </div>
@@ -831,7 +831,7 @@ export default function Sidebar({
                 className="qr-modal-overlay"
                 onClick={() => setShowQRModal(false)}
               >
-                <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()} style={{ "--glow-color": "rgba(139, 92, 246, 0.3)" } as any}>
+                <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()} style={{ "--glow-color": "rgba(139, 92, 246, 0.3)" } as React.CSSProperties}>
                   <div className="qr-modal-header">
                     <h3 className="qr-modal-title logo-text">{t("scan_urunan")}</h3>
                     <button type="button" className="qr-modal-close-btn" onClick={() => setShowQRModal(false)}>
