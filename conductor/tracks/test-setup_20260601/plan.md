@@ -17,10 +17,10 @@ This plan details the steps required to set up Vitest and write comprehensive un
 
 ## Phase 2: Implement Unit Tests for useUrunanState Hook
 
-- [~] Task: Write initialization and basic actions tests
-    - [ ] Write unit tests for default state values of participants, items, tethers, tax, and other fees.
-    - [ ] Write unit tests for adding and deleting participants.
-    - [ ] Write unit tests for adding and deleting receipt items.
+- [x] Task: Write initialization and basic actions tests (d284f04)
+    - [x] Write unit tests for default state values of participants, items, tethers, tax, and other fees.
+    - [x] Write unit tests for adding and deleting participants.
+    - [x] Write unit tests for adding and deleting receipt items.
 - [ ] Task: Write tether and calculations tests
     - [ ] Write unit tests for tether modification actions.
     - [ ] Write unit tests verifying running totals, individual allocations, tax splits, and total bill calculations.
