@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Check, Sparkles } from "lucide-react";
+import { Check } from "lucide-react";
 import { Participant } from "@/hooks/useUrunanState";
 import { useTranslation } from "react-i18next";
 

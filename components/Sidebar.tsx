@@ -200,9 +200,10 @@ export default function Sidebar({
       if (result.billName && !billName) {
         setBillName(result.billName);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearInterval(progressInterval);
-      setParsingError(err.message || "Gagal memproses gambar struk.");
+      const msg = err instanceof Error ? err.message : "Gagal memproses gambar struk.";
+      setParsingError(msg);
     } finally {
       clearInterval(progressInterval);
       setIsParsingReceipt(false);
@@ -239,7 +240,7 @@ export default function Sidebar({
 
     // Find min/max non-zero totals
     const activeTotals: number[] = [];
-    for (const [_, value] of Object.entries(individualTotals)) {
+    for (const value of Object.values(individualTotals)) {
       if (value > 0) {
         activeTotals.push(value);
       }
