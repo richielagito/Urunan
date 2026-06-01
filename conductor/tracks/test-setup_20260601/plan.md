@@ -24,7 +24,7 @@ This plan details the steps required to set up Vitest and write comprehensive un
 - [x] Task: Write tether and calculations tests (a6a1e5e)
     - [x] Write unit tests for tether modification actions.
     - [x] Write unit tests verifying running totals, individual allocations, tax splits, and total bill calculations.
-- [~] Task: Write serialization and sharing tests
-    - [ ] Write unit tests for state serialization and deserialization.
-    - [ ] Write unit tests validating sharing URL generation and backward compatibility support.
+- [x] Task: Write serialization and sharing tests (70c25b1)
+    - [x] Write unit tests for state serialization and deserialization.
+    - [x] Write unit tests validating sharing URL generation and backward compatibility support.
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Implement Unit Tests for useUrunanState Hook' (Protocol in workflow.md)
