@@ -3,6 +3,7 @@
 import React from "react";
 import { Check, Sparkles } from "lucide-react";
 import { Participant } from "@/hooks/useUrunanState";
+import { useTranslation } from "react-i18next";
 
 interface ShareViewProps {
   participants: Participant[];
@@ -33,11 +34,12 @@ export default function ShareView({
   billName,
   isSplitComplete,
 }: ShareViewProps) {
+  const { t } = useTranslation();
   // Calculate Gamified Titles (same as Sidebar)
   const getGamifiedTitle = (pId: string): { label: string; icon: string; className: string } | null => {
     const total = individualTotals[pId] || 0;
     if (total === 0) {
-      return { label: "Beban Tim", icon: "💤", className: "text-purple-400 bg-purple-500/10 border-purple-500/20" };
+      return { label: t("beban_tim"), icon: "💤", className: "text-purple-400 bg-purple-500/10 border-purple-500/20" };
     }
 
     const activeTotals: number[] = [];
@@ -53,13 +55,13 @@ export default function ShareView({
     const minVal = Math.min(...activeTotals);
 
     if (total === maxVal && activeTotals.length > 1) {
-      return { label: "Si Sultan", icon: "👑", className: "text-amber-400 bg-amber-500/10 border-amber-500/30" };
+      return { label: t("sultan"), icon: "👑", className: "text-amber-400 bg-amber-500/10 border-amber-500/30" };
     }
     if (total === minVal && activeTotals.length > 1) {
-      return { label: "Si Paling Hemat", icon: "🪙", className: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" };
+      return { label: t("hemat"), icon: "🪙", className: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" };
     }
 
-    return { label: "Balance Abis", icon: "⚖️", className: "text-gray-400 bg-gray-500/5 border-gray-500/10" };
+    return { label: t("balance"), icon: "⚖️", className: "text-gray-400 bg-gray-500/5 border-gray-500/10" };
   };
 
   return (
@@ -82,10 +84,10 @@ export default function ShareView({
         }}>
           <div>
             <span style={{ fontSize: '1.25rem', color: 'rgba(255, 255, 255, 0.8)' }}>/urun·an/</span>
-            <span style={{ fontSize: '16px', color: 'rgba(255, 255, 255, 0.4)', fontStyle: 'normal', marginLeft: '8px' }}>(Nomina)</span>
+            <span style={{ fontSize: '16px', color: 'rgba(255, 255, 255, 0.4)', fontStyle: 'normal', marginLeft: '8px' }}>({t("definition_pos")})</span>
           </div>
           <p style={{ fontSize: '15px', maxWidth: '450px', margin: '0 auto', lineHeight: '1.4' }}>
-            Kontribusi uang untuk tujuan bersama; iuran; patungan.
+            {t("definition_desc")}
           </p>
         </div>
 
@@ -99,50 +101,50 @@ export default function ShareView({
 
       {/* Live split total bill and complete indicator */}
       <div className="glass-panel totals-card" style={{ width: '100%' }}>
-        <h3 className="totals-card-title">Rekap Akhir Patungan</h3>
+        <h3 className="totals-card-title">{t("recap_title")}</h3>
 
         <div className="summary-rows-container">
           <div className="summary-row">
-            <span>Subtotal Item:</span>
+            <span>{t("subtotal_item")}</span>
             <span className="summary-row-val">{formatRupiah(itemSubtotal)}</span>
           </div>
           {tax > 0 && (
             <div className="summary-row">
-              <span>Pajak (Tax):</span>
+              <span>{t("tax_colon")}</span>
               <span className="summary-row-val">{formatRupiah(tax)}</span>
             </div>
           )}
           {serviceCharge > 0 && (
             <div className="summary-row">
-              <span>Biaya Servis:</span>
+              <span>{t("service_colon")}</span>
               <span className="summary-row-val">{formatRupiah(serviceCharge)}</span>
             </div>
           )}
           {otherFees > 0 && (
             <div className="summary-row">
-              <span>Biaya Lain:</span>
+              <span>{t("other_colon")}</span>
               <span className="summary-row-val">{formatRupiah(otherFees)}</span>
             </div>
           )}
           {discount > 0 && (
             <div className="summary-row">
-              <span>Diskon:</span>
+              <span>{t("discount_colon")}</span>
               <span className="summary-row-val discount-val">-{formatRupiah(discount)}</span>
             </div>
           )}
           <div className="summary-row summary-row-total">
-            <span>Total Tagihan:</span>
+            <span>{t("total_bill")}</span>
             <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
           </div>
           <div className="summary-row">
-            <span>Status Patungan:</span>
+            <span>{t("split_status")}</span>
             {isSplitComplete ? (
               <span className="summary-row-val complete">
-                Udah Dibagi Rata 100% <Check className="w-3.5 h-3.5" />
+                {t("status_complete")} <Check className="w-3.5 h-3.5" />
               </span>
             ) : (
               <span className="summary-row-val partial">
-                Belum beres (ada item nganggur)
+                {t("status_partial")}
               </span>
             )}
           </div>
