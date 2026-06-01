@@ -20,6 +20,7 @@ import {
 import { Participant, ReceiptItem, Tether } from "@/hooks/useUrunanState";
 import { parseReceiptWithGemini, ParsedItem, GeminiReceiptResult } from "@/lib/gemini";
 import confetti from "canvas-confetti";
+import { useTranslation } from "react-i18next";
 
 interface SidebarProps {
   participants: Participant[];
@@ -87,6 +88,7 @@ export default function Sidebar({
   cloneSession,
   generateShareUrl
 }: SidebarProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"items" | "crew" | "summary">("items");
   const [showSettings, setShowSettings] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -232,7 +234,7 @@ export default function Sidebar({
   const getGamifiedTitle = (pId: string): { label: string; icon: string; className: string } | null => {
     const total = individualTotals[pId] || 0;
     if (total === 0) {
-      return { label: "Beban Tim", icon: "💤", className: "text-purple-400 bg-purple-500/10 border-purple-500/20" };
+      return { label: t("beban_tim"), icon: "💤", className: "text-purple-400 bg-purple-500/10 border-purple-500/20" };
     }
 
     // Find min/max non-zero totals
@@ -249,13 +251,13 @@ export default function Sidebar({
     const minVal = Math.min(...activeTotals);
 
     if (total === maxVal && activeTotals.length > 1) {
-      return { label: "Si Sultan", icon: "👑", className: "text-amber-400 bg-amber-500/10 border-amber-500/30" };
+      return { label: t("sultan"), icon: "👑", className: "text-amber-400 bg-amber-500/10 border-amber-500/30" };
     }
     if (total === minVal && activeTotals.length > 1) {
-      return { label: "Si Paling Hemat", icon: "🪙", className: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" };
+      return { label: t("hemat"), icon: "🪙", className: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" };
     }
 
-    return { label: "Balance Abis", icon: "⚖️", className: "text-gray-400 bg-gray-500/5 border-gray-500/10" };
+    return { label: t("balance"), icon: "⚖️", className: "text-gray-400 bg-gray-500/5 border-gray-500/10" };
   };
 
   return (
@@ -269,8 +271,8 @@ export default function Sidebar({
           </h1>
           <div className="logo-subtext">
             <span className="logo-subtext-pronunciation">/urun·an/</span>
-            <span className="logo-subtext-pos">n</span>
-            <span className="logo-subtext-def">sumbangan; sokongan; iuran</span>
+            <span className="logo-subtext-pos">{t("definition_pos")}</span>
+            <span className="logo-subtext-def">{t("definition")}</span>
           </div>
         </div>
         <button
@@ -316,13 +318,13 @@ export default function Sidebar({
       {/* READ-ONLY CLONE WORKSPACE PANEL */}
       {isReadOnly && (
         <div className="readonly-banner">
-          <p className="readonly-desc">Kamu lagi liat graph patungan view-only dari share link.</p>
+          <p className="readonly-desc">{t("readonly_banner")}</p>
           <button
             type="button"
             onClick={cloneSession}
             className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
           >
-            <UserCheck className="w-3.5 h-3.5" /> Clone & Edit di Lokal
+            <UserCheck className="w-3.5 h-3.5" /> {t("clone_btn")}
           </button>
         </div>
       )}
@@ -333,8 +335,8 @@ export default function Sidebar({
           <Store className="w-3.5 h-3.5 bill-name-icon" />
           <input
             type="text"
-            placeholder="Nama Bill (mis. Restoran Padang Sederhana)"
-            aria-label="Nama bill atau restoran"
+            placeholder={t("bill_placeholder")}
+            aria-label={t("bill_aria")}
             value={billName}
             onChange={(e) => setBillName(e.target.value)}
             className="bill-name-input"
@@ -364,21 +366,21 @@ export default function Sidebar({
           onClick={() => setActiveTab("items")}
           className={`tab-btn ${activeTab === "items" ? 'active-items' : ''}`}
         >
-          <Receipt className="w-3.5 h-3.5" /> Item ({items.length})
+          <Receipt className="w-3.5 h-3.5" /> {t("tab_items")} ({items.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("crew")}
           className={`tab-btn ${activeTab === "crew" ? 'active-crew' : ''}`}
         >
-          <Users className="w-3.5 h-3.5" /> Grup ({participants.length})
+          <Users className="w-3.5 h-3.5" /> {t("tab_crew")} ({participants.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("summary")}
           className={`tab-btn ${activeTab === "summary" ? 'active-summary' : ''}`}
         >
-          <Share2 className="w-3.5 h-3.5" /> Rekap
+          <Share2 className="w-3.5 h-3.5" /> {t("tab_recap")}
         </button>
       </div>
 
@@ -454,13 +456,13 @@ export default function Sidebar({
             {/* Manual Add Item Form */}
             {!isReadOnly && (
               <form onSubmit={handleAddItemSubmit} className="glass-panel add-item-form">
-                <h3 className="form-title">Tambah Orb Item</h3>
+                <h3 className="form-title">{t("add_item_title")}</h3>
 
                 <div className="form-fields">
                   <input
                     type="text"
-                    placeholder="Nama item (mis. Nasi Goreng)"
-                    aria-label="Nama item baru"
+                    placeholder={t("item_name_placeholder")}
+                    aria-label={t("item_name_aria")}
                     value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     className="form-input"
@@ -470,7 +472,7 @@ export default function Sidebar({
                       type="number"
                       step="1000"
                       placeholder="Harga"
-                      aria-label="Harga item baru"
+                      aria-label={t("item_price_aria")}
                       value={newItemPrice}
                       onChange={(e) => setNewItemPrice(e.target.value)}
                       className="form-input-number price"
@@ -479,7 +481,7 @@ export default function Sidebar({
                       type="number"
                       min="1"
                       placeholder="Jml"
-                      aria-label="Jumlah item baru"
+                      aria-label={t("item_qty_aria")}
                       value={newItemQty}
                       onChange={(e) => setNewItemQty(e.target.value)}
                       className="form-input-number qty"
@@ -494,11 +496,11 @@ export default function Sidebar({
 
             {/* Items List */}
             <div className="list-section">
-              <h3 className="list-title">Orb Item ({items.length})</h3>
+              <h3 className="list-title">{t("items_list_title")} ({items.length})</h3>
 
               {items.length === 0 ? (
                 <div className="list-empty">
-                  Belum ada item nih. Upload struk atau tambah manual aja!
+                  {t("no_items_desc")}
                 </div>
               ) : (
                 <div className="list-cards-container">
@@ -524,7 +526,7 @@ export default function Sidebar({
                             )}
                             {splitCount > 0 && (
                               <span className="item-split-badge">
-                                Bagi {splitCount} org ({formatRupiah((item.price * item.quantity) / splitCount)} per orang)
+                                {t("split_desc", { count: splitCount, amount: formatRupiah((item.price * item.quantity) / splitCount) })}
                               </span>
                             )}
                           </div>
@@ -551,31 +553,31 @@ export default function Sidebar({
         {/* ================= TAB: ITEMS (continued) — Tax, Service, Discount & Other Fees Panel ================= */}
         {activeTab === "items" && !isReadOnly && (
           <div className="glass-panel tax-service-panel">
-            <h3 className="form-title">Pajak, Servis, & Lainnya</h3>
+            <h3 className="form-title">{t("tax_service_title")}</h3>
             <div className="tax-service-fields">
               <div className="tax-service-field">
-                <label htmlFor="tax-input" className="tax-service-label">Pajak (Tax)</label>
+                <label htmlFor="tax-input" className="tax-service-label">{t("tax_label")}</label>
                 <input
                   id="tax-input"
                   type="number"
                   step="1000"
                   min="0"
                   placeholder="0"
-                  aria-label="Pajak (Tax)"
+                  aria-label={t("tax_label")}
                   value={tax || ""}
                   onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
                   className="form-input"
                 />
               </div>
               <div className="tax-service-field">
-                <label htmlFor="service-charge-input" className="tax-service-label">Biaya Servis</label>
+                <label htmlFor="service-charge-input" className="tax-service-label">{t("service_charge_label")}</label>
                 <input
                   id="service-charge-input"
                   type="number"
                   step="1000"
                   min="0"
                   placeholder="0"
-                  aria-label="Biaya Servis"
+                  aria-label={t("service_charge_label")}
                   value={serviceCharge || ""}
                   onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
                   className="form-input"
@@ -584,28 +586,28 @@ export default function Sidebar({
             </div>
             <div className="tax-service-fields">
               <div className="tax-service-field">
-                <label htmlFor="discount-input" className="tax-service-label discount-label">Diskon</label>
+                <label htmlFor="discount-input" className="tax-service-label ">{t("discount_label")}</label>
                 <input
                   id="discount-input"
                   type="number"
                   step="1000"
                   min="0"
                   placeholder="0"
-                  aria-label="Diskon"
+                  aria-label={t("discount_label")}
                   value={discount || ""}
                   onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
                   className="form-input discount-input"
                 />
               </div>
               <div className="tax-service-field">
-                <label htmlFor="other-fees-input" className="tax-service-label">Biaya Lain</label>
+                <label htmlFor="other-fees-input" className="tax-service-label">{t("other_fees_label")}</label>
                 <input
                   id="other-fees-input"
                   type="number"
                   step="1000"
                   min="0"
                   placeholder="0"
-                  aria-label="Biaya Lain"
+                  aria-label={t("other_fees_label")}
                   value={otherFees || ""}
                   onChange={(e) => setOtherFees(parseFloat(e.target.value) || 0)}
                   className="form-input"
@@ -614,7 +616,7 @@ export default function Sidebar({
             </div>
             {(tax > 0 || serviceCharge > 0 || discount > 0 || otherFees > 0) && (
               <div className="tax-service-summary">
-                Total tambahan: {formatRupiah(tax + serviceCharge + otherFees - discount)}
+                {t("additions_total")} {formatRupiah(tax + serviceCharge + otherFees - discount)}
               </div>
             )}
           </div>
@@ -623,17 +625,17 @@ export default function Sidebar({
         {/* Show tax/service/discount/fees read-only in items tab when in readonly mode */}
         {activeTab === "items" && isReadOnly && (tax > 0 || serviceCharge > 0 || discount > 0 || otherFees > 0) && (
           <div className="glass-panel tax-service-panel">
-            <h3 className="form-title">Pajak, Servis, & Lainnya</h3>
+            <h3 className="form-title">{t("tax_service_title")}</h3>
             <div className="tax-service-fields">
               {tax > 0 && (
                 <div className="tax-service-field">
-                  <span className="tax-service-label">Pajak</span>
+                  <span className="tax-service-label">{t("tax_label_short")}</span>
                   <span className="tax-service-readonly-val">{formatRupiah(tax)}</span>
                 </div>
               )}
               {serviceCharge > 0 && (
                 <div className="tax-service-field">
-                  <span className="tax-service-label">Biaya Servis</span>
+                  <span className="tax-service-label">{t("service_charge_label")}</span>
                   <span className="tax-service-readonly-val">{formatRupiah(serviceCharge)}</span>
                 </div>
               )}
@@ -642,13 +644,13 @@ export default function Sidebar({
               <div className="tax-service-fields">
                 {discount > 0 && (
                   <div className="tax-service-field">
-                    <span className="tax-service-label discount-label">Diskon</span>
+                    <span className="tax-service-label">{t("discount_label")}</span>
                     <span className="tax-service-readonly-val discount-val">-{formatRupiah(discount)}</span>
                   </div>
                 )}
                 {otherFees > 0 && (
                   <div className="tax-service-field">
-                    <span className="tax-service-label">Biaya Lain</span>
+                    <span className="tax-service-label">{t("other_fees_label")}</span>
                     <span className="tax-service-readonly-val">{formatRupiah(otherFees)}</span>
                   </div>
                 )}
@@ -664,13 +666,13 @@ export default function Sidebar({
             {/* Add Participant Form */}
             {!isReadOnly && (
               <form onSubmit={handleAddParticipantSubmit} className="glass-panel add-item-form">
-                <h3 className="form-title">Tambah Anggota</h3>
+                <h3 className="form-title">{t("add_member_title")}</h3>
 
                 <div className="form-fields">
                   <input
                     type="text"
-                    placeholder="Nama (mis. Budi)"
-                    aria-label="Nama anggota baru"
+                    placeholder={t("member_name_placeholder")}
+                    aria-label={t("member_name_aria")}
                     value={newPartName}
                     onChange={(e) => setNewPartName(e.target.value)}
                     className="form-input"
@@ -678,7 +680,7 @@ export default function Sidebar({
 
                   {/* Emoji Preset Selectors */}
                   <div>
-                    <span className="crew-form-emoji-title">Pilih Emoji Avatar:</span>
+                    <span className="crew-form-emoji-title">{t("choose_avatar")}</span>
                     <div className="emojis-grid">
                       {EMOJI_PRESETS.map((emoji) => (
                         <button
@@ -695,7 +697,7 @@ export default function Sidebar({
 
                   {/* Color Selectors */}
                   <div>
-                    <span className="crew-form-emoji-title">Pilih Warna Glow:</span>
+                    <span className="crew-form-emoji-title">{t("choose_glow")}</span>
                     <div className="colors-grid">
                       {COLOR_PRESETS.map((color) => (
                         <button
@@ -711,7 +713,7 @@ export default function Sidebar({
                   </div>
 
                   <button type="submit" className="neo-btn neo-btn-primary justify-center text-xs py-2 w-full mt-1">
-                    <Plus className="w-3.5 h-3.5" /> Masukin Kru
+                    <Plus className="w-3.5 h-3.5" /> {t("insert_crew_btn")}
                   </button>
                 </div>
               </form>
@@ -719,11 +721,11 @@ export default function Sidebar({
 
             {/* Participants list */}
             <div className="list-section">
-              <h3 className="list-title">Daftar Kru ({participants.length})</h3>
+              <h3 className="list-title">{t("crew_list_title")} ({participants.length})</h3>
 
               {participants.length === 0 ? (
                 <div className="list-empty">
-                  Masih sepi nih. Tambahin anggota dulu dong!
+                  {t("no_crew_desc")}
                 </div>
               ) : (
                 <div className="list-cards-container">
@@ -790,11 +792,11 @@ export default function Sidebar({
             {/* Share Split Glass card */}
             <div className="glass-panel share-panel">
               <h3 className="share-panel-title">
-                <Share2 className="w-3.5 h-3.5" /> Share Ke Kru
+                <Share2 className="w-3.5 h-3.5" /> {t("share_crew_title")}
               </h3>
 
               <p className="share-desc">
-                Kirim link patungan ini langsung ke kru kamu! Semua state disimpen di URL (<b>gak pake database, gak pake ribet bikin akun</b>).
+                {t("share_desc_main")}<b>{t("share_desc_bold")}</b>).
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
@@ -805,11 +807,11 @@ export default function Sidebar({
                 >
                   {copied ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" /> Kecopy di Clipboard!
+                      <Check className="w-3.5 h-3.5 text-emerald-400" /> {t("copied_clipboard")}
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5" /> Copy Link Share
+                      <Copy className="w-3.5 h-3.5" /> {t("copy_share_btn")}
                     </>
                   )}
                 </button>
@@ -818,7 +820,7 @@ export default function Sidebar({
                   onClick={() => setShowQRModal(true)}
                   className="w-full neo-btn neo-btn-accent justify-center text-xs py-2"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-pink-400 animate-pulse" /> Tampilkan QR Code
+                  <Sparkles className="w-3.5 h-3.5 text-pink-400 animate-pulse" /> {t("show_qr_btn")}
                 </button>
               </div>
             </div>
@@ -831,14 +833,14 @@ export default function Sidebar({
               >
                 <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()} style={{ "--glow-color": "rgba(139, 92, 246, 0.3)" } as any}>
                   <div className="qr-modal-header">
-                    <h3 className="qr-modal-title logo-text">SCAN URUNAN</h3>
+                    <h3 className="qr-modal-title logo-text">{t("scan_urunan")}</h3>
                     <button type="button" className="qr-modal-close-btn" onClick={() => setShowQRModal(false)}>
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="qr-modal-body">
                     <p className="qr-modal-desc">
-                      Minta kru kamu scan QR Code ini buat langsung buka kanvas physics di HP mereka!
+                      {t("qr_desc")}
                     </p>
                     <div className="qr-code-wrapper">
                       <Image
@@ -874,50 +876,50 @@ export default function Sidebar({
 
             {/* Live split total bill and complete indicator */}
             <div className="glass-panel totals-card">
-              <h3 className="totals-card-title">Rekap Akhir Patungan</h3>
+              <h3 className="totals-card-title">{t("recap_title")}</h3>
 
               <div className="summary-rows-container">
                 <div className="summary-row">
-                  <span>Subtotal Item:</span>
+                  <span>{t("subtotal_item")}</span>
                   <span className="summary-row-val">{formatRupiah(itemSubtotal)}</span>
                 </div>
                 {tax > 0 && (
                   <div className="summary-row">
-                    <span>Pajak (Tax):</span>
+                    <span>{t("tax_colon")}</span>
                     <span className="summary-row-val">{formatRupiah(tax)}</span>
                   </div>
                 )}
                 {serviceCharge > 0 && (
                   <div className="summary-row">
-                    <span>Biaya Servis:</span>
+                    <span>{t("service_colon")}</span>
                     <span className="summary-row-val">{formatRupiah(serviceCharge)}</span>
                   </div>
                 )}
                 {otherFees > 0 && (
                   <div className="summary-row">
-                    <span>Biaya Lain:</span>
+                    <span>{t("other_colon")}</span>
                     <span className="summary-row-val">{formatRupiah(otherFees)}</span>
                   </div>
                 )}
                 {discount > 0 && (
                   <div className="summary-row">
-                    <span>Diskon:</span>
+                    <span>{t("discount_colon")}</span>
                     <span className="summary-row-val discount-val">-{formatRupiah(discount)}</span>
                   </div>
                 )}
                 <div className="summary-row summary-row-total">
-                  <span>Total Tagihan:</span>
+                  <span>{t("total_bill")}</span>
                   <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
                 </div>
                 <div className="summary-row">
-                  <span>Status Patungan:</span>
+                  <span>{t("split_status")}</span>
                   {isSplitComplete ? (
                     <span className="summary-row-val complete">
-                      Udah Dibagi Rata 100% <Check className="w-3.5 h-3.5" />
+                      {t("status_complete")} <Check className="w-3.5 h-3.5" />
                     </span>
                   ) : (
                     <span className="summary-row-val partial">
-                      Belum beres (ada item nganggur)
+                      {t("status_partial")}
                     </span>
                   )}
                 </div>
