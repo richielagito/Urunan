@@ -9,7 +9,7 @@ const resources = {
       "definition_desc": "Kontribusi uang untuk tujuan bersama; iuran; patungan.",
       "readonly_banner": "Kamu lagi liat graph patungan view-only dari share link.",
       "clone_btn": "Clone & Edit di Lokal",
-      "bill_placeholder": "Nama Bill (mis. Restoran Padang Sederhana)",
+      "bill_placeholder": "Nama Bill (mis. Ayam Bu Rica)",
       "bill_aria": "Nama bill atau restoran",
       "tab_items": "Item",
       "tab_crew": "Grup",

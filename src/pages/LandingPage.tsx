@@ -1,13 +1,7 @@
 import React from "react";
-import type { Metadata } from "next";
-
-export const metadata: Metadata = {
-  title: "Urunan - Patungan Jadi Mudah, Adil, & Transparan",
-  description: "Aplikasi pintar untuk patungan bareng teman atau kolega secara adil dan transparan. Tanpa perlu bikin akun, gratis selamanya, private, dan instan.",
-};
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { Sparkles, Shield, UserX, ScanText, ArrowRight } from "lucide-react";
-import styles from "./page.module.css";
+import styles from "./LandingPage.module.css";
 
 export default function LandingPage() {
   return (
@@ -38,7 +32,7 @@ export default function LandingPage() {
             Cara baru patungan bareng temen yang asik, adil dan transparan. Nggak ada lagi drama soal siapa bayar apa.
           </p>
 
-          <Link href="/app" className={styles.ctaButton}>
+          <Link to="/app" className={styles.ctaButton}>
             <span>Cobain Gratis</span>
             <ArrowRight className={`w-5 h-5 ${styles.ctaIcon}`} />
           </Link>
@@ -97,7 +91,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className={styles.footer}>
         <div className={styles.footerContent}>
-          <div className={styles.footerText} suppressHydrationWarning>
+          <div className={styles.footerText}>
             &copy; {new Date().getFullYear()} Urunan. All rights reserved.
           </div>
           <div className={styles.madeBy}>

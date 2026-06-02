@@ -1,0 +1,4 @@
+{"timestamp":"00:28:20.834","source":"Server","level":"ERROR","message":"Error: ENOENT: no such file or directory, scandir '/Users/lembagasidb/richie/Urunan/app'"}
+{"timestamp":"00:28:20.837","source":"Server","level":"ERROR","message":"Error: ENOENT: no such file or directory, scandir '/Users/lembagasidb/richie/Urunan/app'"}
+{"timestamp":"00:28:20.872","source":"Server","level":"ERROR","message":"Error: ENOENT: no such file or directory, scandir '/Users/lembagasidb/richie/Urunan/app'"}
+{"timestamp":"00:28:20.876","source":"Server","level":"ERROR","message":"Error: ENOENT: no such file or directory, scandir '/Users/lembagasidb/richie/Urunan/app'"}

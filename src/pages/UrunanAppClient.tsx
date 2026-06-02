@@ -1,23 +1,15 @@
-"use client";
-
-import "@/lib/i18n";
-import React, { useSyncExternalStore, useState } from "react";
+import React, { useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import ShareView from "@/components/ShareView";
 import NodeCanvas from "@/components/NodeCanvas";
 import { useUrunanState } from "@/hooks/useUrunanState";
 import { Sparkles, Receipt } from "lucide-react";
 
-const subscribe = () => () => { };
-const getSnapshot = () => true;
-const getServerSnapshot = () => false;
-
 export default function UrunanAppClient() {
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const [mobileView, setMobileView] = useState<"canvas" | "dashboard">("canvas");
   const state = useUrunanState();
 
-  if (!mounted || !state.isInitialized) {
+  if (!state.isInitialized) {
     return (
       <div className="loading-screen">
         {/* Decorative ambient glowing backdrops */}

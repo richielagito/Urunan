@@ -1,7 +1,4 @@
-"use client";
-
 import React, { useState } from "react";
-import Image from "next/image";
 import {
   Users,
   Receipt,
@@ -186,10 +183,10 @@ export default function Sidebar({
       // Apply detected tax & service charge
       if (result.tax > 0) setTax(result.tax);
       if (result.serviceCharge > 0) setServiceCharge(result.serviceCharge);
-      
+
       // Apply detected discount
       if (result.discount > 0) setDiscount(result.discount);
-      
+
       // Apply detected other fees (sum all fee amounts)
       if (result.otherFees && result.otherFees.length > 0) {
         const totalOtherFees = result.otherFees.reduce((sum, fee) => sum + fee.amount, 0);
@@ -333,7 +330,7 @@ export default function Sidebar({
       {/* Bill Name Display / Input */}
       {!isReadOnly ? (
         <div className="bill-name-bar">
-          <Store className="w-3.5 h-3.5 bill-name-icon" />
+          <Store className="w-5 h-5 bill-name-icon" />
           <input
             type="text"
             placeholder={t("bill_placeholder")}
@@ -713,7 +710,7 @@ export default function Sidebar({
                     </div>
                   </div>
 
-                  <button type="submit" className="neo-btn neo-btn-primary justify-center text-xs py-2 w-full mt-1">
+                  <button type="submit" className="neo-btn neo-btn-primary justify-center text-xs py-2 w-full mt-2">
                     <Plus className="w-3.5 h-3.5" /> {t("insert_crew_btn")}
                   </button>
                 </div>
@@ -844,13 +841,12 @@ export default function Sidebar({
                       {t("qr_desc")}
                     </p>
                     <div className="qr-code-wrapper">
-                      <Image
+                      <img
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateShareUrl())}&color=07080c&bgcolor=ffffff&qzone=2`}
                         alt="Urunan Share QR Code"
                         className="qr-code-img"
                         width={200}
                         height={200}
-                        unoptimized
                       />
                     </div>
                     <div className="qr-modal-url">

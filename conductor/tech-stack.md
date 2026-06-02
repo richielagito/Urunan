@@ -4,7 +4,8 @@ This document defines the technology stack, libraries, and architectural pattern
 
 ## 1. Core Platform
 - **Programming Language:** TypeScript (v5.x)
-- **Frontend Framework:** Next.js (v16.2.6) & React (v19.2.4) using the App Router architecture.
+- **Frontend Framework:** React (v19.2.4) with Vite as the build tool.
+- **Routing:** React Router (v7.x) for client-side routing between the landing page and the main app.
 - **Styling:** Vanilla CSS (TailwindCSS is avoided unless requested) for precise custom styling and layout.
 
 ## 2. Interactive & Physics Engines
@@ -20,5 +21,7 @@ This document defines the technology stack, libraries, and architectural pattern
 - **Gemini 2.5 Flash Lite API:** Powers the automated billing scanner. It processes raw images of receipts uploaded by the user, runs OCR-to-JSON extraction, and generates structured list items (name, price, tax/service charge) to feed into the node layout.
 
 ## 5. Development & Quality Tooling
-- **Linting:** ESLint with Next.js presets.
+- **Build Tool:** Vite (v6.x) for fast HMR and production builds.
+- **Testing:** Vitest with React Testing Library and jsdom environment.
+- **Linting:** ESLint with React Hooks and TypeScript plugins.
 - **Code Quality:** React Doctor (`react-doctor`) for validating React structure and performance.

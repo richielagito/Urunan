@@ -1,5 +1,7 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Urunan Agent Rules
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+- This project uses **React 19 + Vite** (not Next.js).
+- All source code lives under `src/`.
+- Path alias `@/` maps to `./src/`.
+- Styling uses Tailwind CSS v4 & vanilla CSS — no CSS-in-JS.
+- Tests use Vitest with React Testing Library.
