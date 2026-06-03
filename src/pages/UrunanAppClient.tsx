@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import ShareView from "@/components/ShareView";
 import NodeCanvas from "@/components/NodeCanvas";
@@ -8,6 +8,10 @@ import { Sparkles, Receipt } from "lucide-react";
 export default function UrunanAppClient() {
   const [mobileView, setMobileView] = useState<"canvas" | "dashboard">("canvas");
   const state = useUrunanState();
+
+  useEffect(() => {
+    localStorage.setItem("urunan_has_visited", "true");
+  }, []);
 
   if (!state.isInitialized) {
     return (
@@ -29,8 +33,15 @@ export default function UrunanAppClient() {
   if (state.isReadOnly) {
     return (
       <main className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', minHeight: '100vh', overflowY: 'auto' }}>
+        {/* Background Orbs for the entire app to show behind sidebar & canvas */}
+        <div className="app-background-orbs-wrapper">
+          <div className="canvas-ambient-orb-1" />
+          <div className="canvas-ambient-orb-2" />
+        </div>
         <ShareView
           participants={state.participants}
+          items={state.items}
+          tethers={state.tethers}
           individualTotals={state.individualTotals}
           totalReceiptCost={state.totalReceiptCost}
           itemSubtotal={state.itemSubtotal}
@@ -47,6 +58,11 @@ export default function UrunanAppClient() {
 
   return (
     <main className={`app-container ${mobileView}-active`}>
+      {/* Background Orbs for the entire app to show behind sidebar & canvas */}
+      <div className="app-background-orbs-wrapper">
+        <div className="canvas-ambient-orb-1" />
+        <div className="canvas-ambient-orb-2" />
+      </div>
 
       {/* Dynamic Left Control Dashboard Sidebar Wrapper */}
       <div className={`sidebar-container ${mobileView === "dashboard" ? "active" : "inactive"}`}>
@@ -63,7 +79,6 @@ export default function UrunanAppClient() {
           otherFees={state.otherFees}
           billName={state.billName}
           isSplitComplete={state.isSplitComplete}
-          isReadOnly={state.isReadOnly}
           geminiApiKey={state.geminiApiKey}
           setGeminiApiKey={state.setGeminiApiKey}
           setTax={state.setTax}
@@ -76,7 +91,6 @@ export default function UrunanAppClient() {
           addItem={state.addItem}
           deleteItem={state.deleteItem}
           addParsedItems={state.addParsedItems}
-          cloneSession={state.cloneSession}
           generateShareUrl={state.generateShareUrl}
         />
       </div>

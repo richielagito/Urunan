@@ -506,15 +506,7 @@ export default function NodeCanvas({
             </feMerge>
           </filter>
 
-          {/* Canvas grid background patterns */}
-          <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(99, 102, 241, 0.15)" />
-            <stop offset="100%" stopColor="rgba(0, 0, 0, 0)" />
-          </radialGradient>
         </defs>
-
-        {/* Center glowing radial gradient */}
-        <rect width="100%" height="100%" fill="url(#center-glow)" />
 
         {/* 1. Draw glowing elastic lines (Tethers) */}
         {links.map((link) => {
