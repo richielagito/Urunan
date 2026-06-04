@@ -97,24 +97,17 @@ export default function ShareView({
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: '500px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', zIndex: 1 }}>
+    <div className="w-full max-w-[500px] mx-auto flex flex-col gap-5 relative z-[1]">
 
       {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
-        <h1 className="logo-text tracking-tight" style={{
-          fontSize: "2.75rem",
-          fontWeight: 800,
-          margin: 0,
-          background: 'linear-gradient(135deg, #ffffff 30%, rgba(255, 255, 255, 0.3) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent'
-        }}>
+      <div className="text-center mb-2.5 flex flex-col gap-2 items-center">
+        <h1 className="logo-text text-5xl font-extrabold m-0">
           urunan
         </h1>
       </div>
 
       {/* Location & Totals Card Group */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+      <div className="flex flex-col gap-3 w-full">
         {/* Bill Name Display */}
         {billName && (
           <div className="share-bill-name">
@@ -123,9 +116,7 @@ export default function ShareView({
         )}
 
         {/* Live split total bill and complete indicator */}
-        <div className="glass-panel totals-card" style={{ width: '100%' }}>
-          <h3 className="totals-card-title">{t("recap_title")}</h3>
-
+        <div className="glass-panel totals-card w-full">
           <div className="summary-rows-container">
             <div className="summary-row">
               <span>{t("subtotal_item")}</span>
@@ -158,18 +149,6 @@ export default function ShareView({
             <div className="summary-row summary-row-total">
               <span>{t("total_bill")}</span>
               <span className="summary-row-val">{formatRupiah(totalReceiptCost)}</span>
-            </div>
-            <div className="summary-row">
-              <span>{t("split_status")}</span>
-              {isSplitComplete ? (
-                <span className="summary-row-val complete">
-                  {t("status_complete")}
-                </span>
-              ) : (
-                <span className="summary-row-val partial">
-                  {t("status_partial")}
-                </span>
-              )}
             </div>
           </div>
 

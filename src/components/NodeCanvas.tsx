@@ -730,20 +730,12 @@ export default function NodeCanvas({
       {/* Manual Drag & Drop Guide / Help Banner */}
       {(showGuide || isAboutToClear) && (
         <div
-          className="canvas-guide-banner relative"
-          style={isAboutToClear ? {
-            borderColor: "rgba(239, 68, 68, 0.4)",
-            backgroundColor: "rgba(127, 29, 29, 0.35)",
-            boxShadow: "0 0 15px rgba(239, 68, 68, 0.2)",
-            transition: "all 0.2s ease"
-          } : {
-            transition: "all 0.2s ease"
-          }}
+          className={`canvas-guide-banner relative ${isAboutToClear ? "clearing" : ""}`}
         >
           {isAboutToClear ? (
             <>
               <Trash2 className="banner-icon-trash" />
-              <span style={{ color: "#f87171", fontWeight: "bold" }}>Lepas klik buat mutusin semua koneksi!</span>
+              <span className="text-red-400 font-bold">Lepas klik buat mutusin semua koneksi!</span>
             </>
           ) : (
             <>

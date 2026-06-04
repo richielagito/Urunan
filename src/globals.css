@@ -187,14 +187,23 @@
     overflow: hidden;
 }
 
+.app-container.readonly-mode {
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+}
+
 .logo-text {
     font-family: var(--font-display);
     font-weight: 800;
-    background: linear-gradient(135deg, #fff 30%, #a5b4fc 100%);
+    background: linear-gradient(135deg, #ffffff 30%, rgba(255, 255, 255, 0.3) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.025em;
 }
 
 /* Custom Switch Toggle styling */
@@ -580,7 +589,7 @@
 .scanner-image-preview-container {
     width: 100%;
     max-width: 160px;
-    height: 120px;
+    aspect-ratio: 9 / 16;
     border-radius: 8px;
     overflow: hidden;
     position: relative;
@@ -627,10 +636,10 @@
 
 .scanner-progress-bar-fill {
     height: 100%;
-    width: 30%;
+    width: 0%;
     background: #06b6d4;
     border-radius: 4px;
-    animation: indeterminateProgress 1.5s infinite ease-in-out;
+    transition: width 0.3s ease-out;
 }
 
 @keyframes indeterminateProgress {
@@ -643,9 +652,16 @@
     }
 }
 
+.ai-parser-panel.loading {
+    cursor: not-allowed;
+    border-style: solid;
+}
+
 .ai-parser-panel.success {
     background: linear-gradient(0deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.02) 100%);
     box-shadow: 0 4px 16px rgba(16, 185, 129, 0.2);
+    border-style: solid;
+    border-color: rgba(16, 185, 129, 0.5) !important;
 }
 
 .error-banner {
@@ -854,6 +870,14 @@ input[type="number"] {
 .form-input-number.price {
     flex: 1;
     min-width: 0;
+}
+
+.pl-prefix-x {
+    padding-left: 24px !important;
+}
+
+.pl-prefix-rp {
+    padding-left: 32px !important;
 }
 
 /* List section */
@@ -1202,7 +1226,7 @@ input[type="number"] {
 .summary-row {
     display: flex;
     justify-content: space-between;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
     color: #9ca3af;
 }
@@ -1227,7 +1251,6 @@ input[type="number"] {
     padding-top: 8px;
     margin-top: 4px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 16px;
     font-weight: 800;
     color: #fff;
 }
@@ -1309,7 +1332,7 @@ input[type="number"] {
     width: 100%;
     cursor: pointer;
     font-family: inherit;
-    font-size: inherit;
+    font-size: 12px;
     text-align: left;
     color: inherit;
 }
@@ -1547,6 +1570,13 @@ input[type="number"] {
     gap: 8px;
     pointer-events: auto;
     border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.canvas-guide-banner.clearing {
+    border-color: rgba(239, 68, 68, 0.4);
+    background-color: rgba(127, 29, 29, 0.35);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
 }
 
 /* Custom banner icons styling */
@@ -1955,6 +1985,7 @@ input[type="number"] {
     position: relative;
     text-align: center;
     animation: modalSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    --glow-color: rgba(139, 92, 246, 0.3);
 }
 
 @keyframes modalSlideUp {

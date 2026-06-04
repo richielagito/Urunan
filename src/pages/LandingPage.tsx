@@ -16,7 +16,7 @@ export default function LandingPage() {
 
         {/* Hero Section */}
         <div className={styles.heroSection}>
-          <h1 className={styles.heroTitle}>urunan</h1>
+          <h1 className={`${styles.heroTitle} logo-text`}>urunan</h1>
 
           <div className={styles.dictionaryBlock}>
             <div>
@@ -29,7 +29,7 @@ export default function LandingPage() {
           </div>
 
           <p className={styles.heroDesc}>
-            Cara baru patungan bareng temen yang asik, adil dan transparan. Nggak ada lagi drama soal siapa bayar apa.
+            Cara baru patungan bareng temen yang <span className={styles.highlight}>asik</span>, <span className={styles.highlight}>adil</span> dan <span className={styles.highlight}>transparan</span>. Nggak ada lagi drama soal siapa bayar apa.
           </p>
 
           <Link to="/app" className={styles.ctaButton}>

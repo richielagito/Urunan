@@ -75,7 +75,7 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
   const { mimeType, base64Data } = await fileToBase64(processedImage);
 
   // 3. Prepare the endpoint
-  const modelName = "gemini-2.5-flash-lite";
+  const modelName = "gemini-2.5-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
   // 4. Assemble system instructions and multimodal prompt
@@ -114,9 +114,13 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
     "   - Return each as an object with { label, amount }.\n" +
     "   - Use a clean, concise label for each fee.\n" +
     "   - If none found, return an empty array.\n\n" +
-    "IMPORTANT: Be precise with numbers. Double-check that item prices × quantities are reasonable " +
-    "and match what's visible on the receipt. When in doubt about a faded or unclear character, " +
-    "make your best inference from context (e.g. if other items are in thousands, a '1' is likely '1000').";
+    "IMPORTANT ARITHMETIC RULES & SELF-CORRECTION:\n" +
+    "You MUST use the 'extractionLog' field to think and check calculations BEFORE filling out other fields:\n" +
+    "1. Under 'extractionLog', transcribe raw line items, quantities, and prices as seen visually.\n" +
+    "2. For each item, double-check if unit price × quantity equals the line total. If they don't match, note it and use the mathematically correct unit price.\n" +
+    "3. Sum all items, add service charge, tax (PPN/PB1/VAT), other fees, and subtract discounts. Compare the calculated sum to the Grand Total shown on the receipt.\n" +
+    "4. If there is a discrepancy (e.g. a digit misread like '0' as '6' or '1' as '7' due to creases/wrinkles), trace which digit is ambiguous and correct it so the arithmetic sums perfectly to the Grand Total.\n" +
+    "5. Finally, output the correct validated items, tax, serviceCharge, discount, otherFees, and billName.";
 
   const body = {
     contents: [
@@ -147,6 +151,13 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
       responseSchema: {
         type: "OBJECT",
         properties: {
+          extractionLog: {
+            type: "ARRAY",
+            description: "List of step-by-step observations, calculations, and mathematical verification steps. Generate this FIRST.",
+            items: {
+              type: "STRING"
+            }
+          },
           billName: {
             type: "STRING",
             description: "Restaurant or establishment name from the receipt header. Empty string if not identifiable."
@@ -204,7 +215,7 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
             }
           }
         },
-        required: ["items", "tax", "serviceCharge", "discount", "otherFees", "billName"]
+        required: ["extractionLog", "items", "tax", "serviceCharge", "discount", "otherFees", "billName"]
       }
     }
   };
@@ -233,8 +244,11 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
       throw new Error("Empty text response from Gemini API");
     }
 
-    const parsedJson = JSON.parse(textResponse) as GeminiReceiptResult;
+    const parsedJson = JSON.parse(textResponse) as GeminiReceiptResult & { extractionLog?: string[] };
     if (parsedJson && Array.isArray(parsedJson.items)) {
+      if (parsedJson.extractionLog) {
+        console.log("Gemini OCR Extraction Log:", parsedJson.extractionLog);
+      }
       return {
         items: parsedJson.items,
         tax: parsedJson.tax || 0,

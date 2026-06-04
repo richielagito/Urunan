@@ -21,10 +21,9 @@ export default function UrunanAppClient() {
 
         <div className="loading-content">
           <div className="loading-spinner" />
-          <h2 className="loading-title logo-text">
-            urunan <Sparkles className="w-5 h-5 text-indigo-400" />
+          <h2 className="loading-title logo-text text-5xl font-extrabold mt-2">
+            urunan
           </h2>
-          <p className="loading-subtitle">Nge-booting physics engine…</p>
         </div>
       </div>
     );
@@ -32,7 +31,7 @@ export default function UrunanAppClient() {
 
   if (state.isReadOnly) {
     return (
-      <main className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', minHeight: '100vh', overflowY: 'auto' }}>
+      <main className="app-container readonly-mode">
         {/* Background Orbs for the entire app to show behind sidebar & canvas */}
         <div className="app-background-orbs-wrapper">
           <div className="canvas-ambient-orb-1" />

@@ -119,6 +119,7 @@ export default function Sidebar({
   const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null);
   const [scanningProgressText, setScanningProgressText] = useState<string>('');
   const [isScanningSuccess, setIsScanningSuccess] = useState<boolean>(false);
+  const [scanningProgressPercent, setScanningProgressPercent] = useState<number>(0);
 
   // Add Participant
   const handleAddParticipantSubmit = (e: React.FormEvent) => {
@@ -166,11 +167,13 @@ export default function Sidebar({
     const stages = ["Memproses gambar...", "Mengupload struk...", "Menganalisa gambar...", "Mengekstrak harga...", "Menghitung Total..."];
     let currentStage = 0;
     setScanningProgressText(stages[0]);
+    setScanningProgressPercent(20);
 
     const progressInterval = setInterval(() => {
       currentStage++;
       if (currentStage < stages.length) {
         setScanningProgressText(stages[currentStage]);
+        setScanningProgressPercent((currentStage + 1) * 20);
       }
     }, 1200);
 
@@ -180,6 +183,7 @@ export default function Sidebar({
 
       if (result.items.length > 0) {
         setScanningProgressText("Berhasil!");
+        setScanningProgressPercent(100);
         setIsScanningSuccess(true);
         await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -222,6 +226,30 @@ export default function Sidebar({
     }
   };
 
+
+  // Check if Web Share is supported
+  const isShareSupported = typeof navigator !== "undefined" && !!navigator.share;
+
+  const handleShareLink = async () => {
+    const shareUrl = generateShareUrl();
+    const shareData = {
+      title: billName ? `Urunan - ${billName}` : "Urunan - Patungan Mudah",
+      text: billName 
+        ? `Yuk cek detail patungan "${billName}" di Urunan!` 
+        : "Yuk cek detail patungan kita di Urunan!",
+      url: shareUrl,
+    };
+
+    if (isShareSupported) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        console.log("Share failed or cancelled:", err);
+      }
+    } else {
+      handleCopyLink();
+    }
+  };
 
   // Handle Copy share link
   const handleCopyLink = () => {
@@ -396,21 +424,16 @@ export default function Sidebar({
             {/* AI Receipt Scanning Area */}
             <label
               className={`glass-panel ai-parser-panel ${isParsingReceipt ? 'loading' : ''} ${isScanningSuccess ? 'success' : ''}`}
-              style={{
-                cursor: isParsingReceipt ? 'not-allowed' : 'pointer',
-                borderStyle: isParsingReceipt || isScanningSuccess ? 'solid' : 'dashed',
-                borderColor: isScanningSuccess ? 'rgba(16, 185, 129, 0.5)' : undefined
-              }}
             >
               {!isParsingReceipt && !isScanningSuccess ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                <div className="flex flex-col items-center gap-2">
                   <Camera className="w-8 h-8 text-cyan-400" />
-                  <h3 className="ai-parser-title" style={{ margin: 0 }}>
+                  <h3 className="ai-parser-title m-0">
                     Scan Struk
                   </h3>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%' }}>
+                <div className="flex flex-col items-center gap-3 w-full">
                   {uploadedImagePreview && (
                     <div className="scanner-image-preview-container">
                       <img src={uploadedImagePreview} alt="Receipt preview" className="scanner-image-preview" />
@@ -419,17 +442,17 @@ export default function Sidebar({
                   )}
 
                   {isScanningSuccess ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 'bold' }}>
+                    <div className="flex items-center gap-2 text-emerald-500 font-bold">
                       <Check className="w-5 h-5" />
                       <span>{scanningProgressText}</span>
                     </div>
                   ) : (
-                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                      <span className="parser-loader-text" style={{ fontSize: '12px' }}>
+                    <div className="w-full flex flex-col items-center gap-2">
+                      <span className="parser-loader-text">
                         {scanningProgressText}
                       </span>
                       <div className="scanner-progress-bar-container">
-                        <div className="scanner-progress-bar-fill"></div>
+                        <div className="scanner-progress-bar-fill" style={{ width: `${scanningProgressPercent}%` }}></div>
                       </div>
                     </div>
                   )}
@@ -442,12 +465,12 @@ export default function Sidebar({
                 aria-label="Pilih file gambar struk untuk discan"
                 onChange={handleOCRFileChange}
                 disabled={isParsingReceipt}
-                style={{ display: 'none' }}
+                className="hidden"
               />
 
               {/* Error Banner */}
               {parsingError && (
-                <div className="error-banner" style={{ marginTop: '8px' }}>
+                <div className="error-banner mt-2">
                   {parsingError}
                 </div>
               )}
@@ -476,8 +499,7 @@ export default function Sidebar({
                       aria-label={t("item_qty_aria")}
                       value={newItemQty}
                       onChange={(e) => setNewItemQty(e.target.value)}
-                      className="form-input-number qty text-left w-16"
-                      style={{ paddingLeft: "24px" }}
+                      className="form-input-number qty text-left w-16 pl-prefix-x"
                     />
                   </div>
                   <div className="relative flex items-center flex-1">
@@ -489,8 +511,7 @@ export default function Sidebar({
                       aria-label={t("item_price_aria")}
                       value={formatRupiahInput(newItemPrice)}
                       onChange={(e) => setNewItemPrice(parseRupiahInput(e.target.value).toString())}
-                      className="form-input-number price w-full"
-                      style={{ paddingLeft: "32px" }}
+                      className="form-input-number price w-full pl-prefix-rp"
                     />
                   </div>
                   <button type="submit" className="neo-btn neo-btn-primary py-1 px-3">
@@ -535,8 +556,8 @@ export default function Sidebar({
                             )}
                             {splitCount > 0 && (
                               <div className="flex items-center gap-1.5">
-                                <div className="flex -space-x-1.5 overflow-hidden">
-                                  {assignedParticipants.map((p) => (
+                                <div className="flex overflow-hidden">
+                                  {assignedParticipants.map((p, idx) => (
                                     <div
                                       key={p.id}
                                       className="inline-flex rounded-full bg-slate-950 border items-center justify-center select-none shadow-sm"
@@ -549,11 +570,13 @@ export default function Sidebar({
                                         display: "flex",
                                         alignItems: "center",
                                         justifyContent: "center",
-                                        padding: 0,
-                                        paddingLeft: "2px"
+                                        padding: "1.5px 0 0 1.5px",
+                                        lineHeight: 1,
+                                        fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif',
+                                        marginLeft: idx > 0 ? "-6px" : "0px"
                                       }}
                                     >
-                                      {p.emoji}
+                                      {p.emoji.replace(/\uFE0F/g, '')}
                                     </div>
                                   ))}
                                 </div>
@@ -600,8 +623,7 @@ export default function Sidebar({
                     aria-label={t("tax_label")}
                     value={formatRupiahInput(tax)}
                     onChange={(e) => setTax(parseRupiahInput(e.target.value))}
-                    className="form-input w-full"
-                    style={{ paddingLeft: "32px" }}
+                    className="form-input w-full pl-prefix-rp"
                   />
                 </div>
               </div>
@@ -617,8 +639,7 @@ export default function Sidebar({
                     aria-label={t("service_charge_label")}
                     value={formatRupiahInput(serviceCharge)}
                     onChange={(e) => setServiceCharge(parseRupiahInput(e.target.value))}
-                    className="form-input w-full"
-                    style={{ paddingLeft: "32px" }}
+                    className="form-input w-full pl-prefix-rp"
                   />
                 </div>
               </div>
@@ -634,8 +655,7 @@ export default function Sidebar({
                     aria-label={t("discount_label")}
                     value={formatRupiahInput(discount)}
                     onChange={(e) => setDiscount(parseRupiahInput(e.target.value))}
-                    className="form-input discount-input w-full"
-                    style={{ paddingLeft: "32px" }}
+                    className="form-input discount-input w-full pl-prefix-rp"
                   />
                 </div>
               </div>
@@ -651,8 +671,7 @@ export default function Sidebar({
                     aria-label={t("other_fees_label")}
                     value={formatRupiahInput(otherFees)}
                     onChange={(e) => setOtherFees(parseRupiahInput(e.target.value))}
-                    className="form-input w-full"
-                    style={{ paddingLeft: "32px" }}
+                    className="form-input w-full pl-prefix-rp"
                   />
                 </div>
               </div>
@@ -801,22 +820,50 @@ export default function Sidebar({
                 {t("share_desc_main")}<b>{t("share_desc_bold")}</b>).
               </p>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" /> {t("copied_clipboard")}
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" /> {t("copy_share_btn")}
-                    </>
-                  )}
-                </button>
+              <div className="flex flex-col gap-2 w-full">
+                {isShareSupported ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleShareLink}
+                      className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
+                    >
+                      <Share2 className="w-3.5 h-3.5" /> {t("share_link_btn")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="w-full neo-btn justify-center text-xs py-2 bg-slate-900 border border-slate-750"
+                      style={{ background: '#0a0b14', border: '1px solid rgba(255, 255, 255, 0.08)', color: '#9ca3af' }}
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" /> {t("copied_clipboard")}
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" /> {t("copy_share_btn")}
+                        </>
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" /> {t("copied_clipboard")}
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" /> {t("copy_share_btn")}
+                      </>
+                    )}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowQRModal(true)}
@@ -833,7 +880,7 @@ export default function Sidebar({
                 className="qr-modal-overlay"
                 onClick={() => setShowQRModal(false)}
               >
-                <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()} style={{ "--glow-color": "rgba(139, 92, 246, 0.3)" } as React.CSSProperties}>
+                <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()}>
                   <div className="qr-modal-header">
                     <h3 className="qr-modal-title logo-text">{t("scan_urunan")}</h3>
                     <button type="button" className="qr-modal-close-btn" onClick={() => setShowQRModal(false)}>
@@ -854,7 +901,7 @@ export default function Sidebar({
                       />
                     </div>
                     <div className="qr-modal-url">
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span className="truncate">
                         Link: {generateShareUrl().substring(0, 43)}…
                       </span>
                       <button
@@ -864,9 +911,9 @@ export default function Sidebar({
                         title="Copy Link Share"
                       >
                         {qrCopied ? (
-                          <Check className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                          <Check className="w-3 h-3" />
                         ) : (
-                          <Copy className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                          <Copy className="w-3 h-3" />
                         )}
                       </button>
                     </div>
