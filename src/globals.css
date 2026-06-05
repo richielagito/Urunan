@@ -1143,15 +1143,6 @@ input[type="number"] {
 
 .rekap-title-badge {
     margin-left: 6px;
-    font-size: 12px;
-    padding: 1px 5px;
-}
-
-@media (max-width: 768px) {
-    .rekap-title-badge {
-        font-size: 8px;
-        padding: 2px 4px;
-    }
 }
 
 .participant-total-label {
