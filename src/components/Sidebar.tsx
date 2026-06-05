@@ -234,8 +234,8 @@ export default function Sidebar({
     const shareUrl = generateShareUrl();
     const shareData = {
       title: billName ? `Urunan - ${billName}` : "Urunan - Patungan Mudah",
-      text: billName 
-        ? `Yuk cek detail patungan "${billName}" di Urunan!` 
+      text: billName
+        ? `Yuk cek detail patungan "${billName}" di Urunan!`
         : "Yuk cek detail patungan kita di Urunan!",
       url: shareUrl,
     };
@@ -833,8 +833,7 @@ export default function Sidebar({
                     <button
                       type="button"
                       onClick={handleCopyLink}
-                      className="w-full neo-btn justify-center text-xs py-2 bg-slate-900 border border-slate-750"
-                      style={{ background: '#0a0b14', border: '1px solid rgba(255, 255, 255, 0.08)', color: '#9ca3af' }}
+                      className="w-full neo-btn neo-btn-secondary justify-center text-xs py-2"
                     >
                       {copied ? (
                         <>
