@@ -96,6 +96,18 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
     "   - Do NOT include modifier lines (e.g. 'Extra Cheese', 'Level 5') as separate items — append them to the parent item name.\n" +
     "   - Do NOT include subtotal, total, change, payment method, or summary lines as items.\n" +
     "   - Handle Indonesian number formats: periods as thousand separators (e.g. '135.000' = 135000), commas as decimals.\n\n" +
+    "   BUNDLED / PACKAGE ITEMS (IMPORTANT for Indonesian receipts):\n" +
+    "   - Indonesian receipts often have bundled items: a package line (e.g. 'Paket Menu 1', 'Paket Hemat A', 'Combo 1') " +
+    "followed by sub-items that are COMPONENTS of the package (e.g. 'Ayam Goreng', 'Nasi', 'Es Teh').\n" +
+    "   - Keywords that indicate a package: 'Paket', 'Paket Menu', 'Bundling', 'Combo', 'Set Menu', 'Promo Paket', 'Paket Hemat'.\n" +
+    "   - Sub-items of a package can be identified by: being indented under the parent, having no price or a price of 0, " +
+    "preceded by a dash/bullet, or appearing between the package line and the next independently-priced item.\n" +
+    "   - When you detect a package with sub-items: extract ONLY the package line as a single item with its stated price and quantity. " +
+    "Do NOT extract the sub-items as separate items.\n" +
+    "   - Append sub-item names in parentheses to the package name for clarity, e.g. 'Paket Menu 1 (Ayam, Nasi, Es Teh)'. " +
+    "Truncate if the result exceeds ~50 characters.\n" +
+    "   - If a sub-item has its OWN independent price (not 0, and not just a breakdown of the package price), " +
+    "treat it as a separate standalone item instead.\n\n" +
     "3. TAX (tax):\n" +
     "   - Look for lines labeled: 'tax', 'pajak', 'PPN', 'PB1', 'VAT', 'PPh', or similar.\n" +
     "   - Return the ABSOLUTE tax amount as a number (not percentage). Return 0 if not found.\n\n" +

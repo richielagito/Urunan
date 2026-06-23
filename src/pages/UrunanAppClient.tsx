@@ -88,6 +88,7 @@ export default function UrunanAppClient() {
           addParticipant={state.addParticipant}
           deleteParticipant={state.deleteParticipant}
           addItem={state.addItem}
+          updateItem={state.updateItem}
           deleteItem={state.deleteItem}
           addParsedItems={state.addParsedItems}
           generateShareUrl={state.generateShareUrl}
@@ -115,7 +116,7 @@ export default function UrunanAppClient() {
           onClick={() => setMobileView("canvas")}
           className={`mobile-nav-btn ${mobileView === "canvas" ? "active" : ""}`}
         >
-          <Sparkles className="w-4 h-4" />
+          <Sparkles className="size-4" />
           <span>Urunan (Canvas)</span>
         </button>
         <button
@@ -123,7 +124,7 @@ export default function UrunanAppClient() {
           onClick={() => setMobileView("dashboard")}
           className={`mobile-nav-btn ${mobileView === "dashboard" ? "active" : ""}`}
         >
-          <Receipt className="w-4 h-4" />
+          <Receipt className="size-4" />
           <span>Kelola Struk & Kru</span>
         </button>
       </div>

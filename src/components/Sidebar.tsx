@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users,
@@ -20,6 +20,8 @@ import { Participant, ReceiptItem, Tether } from "@/hooks/useUrunanState";
 import { parseReceiptWithGemini, ParsedItem, GeminiReceiptResult } from "@/lib/gemini";
 import confetti from "canvas-confetti";
 import { useTranslation } from "react-i18next";
+import { toJpeg } from "@/lib/html-to-image";
+import ShareView from "./ShareView";
 
 interface SidebarProps {
   participants: Participant[];
@@ -44,6 +46,7 @@ interface SidebarProps {
   addParticipant: (name: string, emoji: string, color: string) => void;
   deleteParticipant: (id: string) => void;
   addItem: (name: string, price: number, quantity: number) => void;
+  updateItem: (id: string, name: string, price: number, quantity: number) => void;
   deleteItem: (id: string) => void;
   addParsedItems: (parsed: ParsedItem[]) => void;
   generateShareUrl: () => string;
@@ -91,17 +94,33 @@ export default function Sidebar({
   addParticipant,
   deleteParticipant,
   addItem,
+  updateItem,
   deleteItem,
   addParsedItems,
   generateShareUrl
 }: SidebarProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [isSharing, setIsSharing] = useState(false);
+  const shareViewRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<"items" | "crew" | "summary">("items");
   const [showSettings, setShowSettings] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [qrCopied, setQrCopied] = useState(false);
+  // Draft state for quantity editing — allows empty field while typing
+  const [draftQty, setDraftQty] = useState<{ id: string; value: string } | null>(null);
+
+  useEffect(() => {
+    if (!showQRModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowQRModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showQRModal]);
 
   // Forms states
   const [newPartName, setNewPartName] = useState("");
@@ -231,23 +250,64 @@ export default function Sidebar({
   const isShareSupported = typeof navigator !== "undefined" && !!navigator.share;
 
   const handleShareLink = async () => {
-    const shareUrl = generateShareUrl();
-    const shareData = {
-      title: billName ? `Urunan - ${billName}` : "Urunan - Patungan Mudah",
-      text: billName
-        ? `Yuk cek detail patungan "${billName}" di Urunan!`
-        : "Yuk cek detail patungan kita di Urunan!",
-      url: shareUrl,
-    };
+    if (!shareViewRef.current) return;
+    setIsSharing(true);
 
-    if (isShareSupported) {
-      try {
-        await navigator.share(shareData);
-      } catch (err) {
-        console.log("Share failed or cancelled:", err);
+    try {
+      // 1. Generate JPEG image using html-to-image
+      const dataUrl = await toJpeg(shareViewRef.current, {
+        quality: 0.95,
+        backgroundColor: "#07080c",
+        cacheBust: true,
+      });
+
+      // 2. Convert dataUrl to a File object
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const cleanBillName = billName ? billName.toLowerCase().replace(/[^a-z0-9]/g, "-") : "urunan";
+      const filename = `${cleanBillName}-rekap.jpg`;
+      const file = new File([blob], filename, {
+        type: "image/jpeg",
+      });
+
+      // 3. Try sharing via Web Share API
+      const isFileShareSupported = typeof navigator !== "undefined" && 
+        !!navigator.canShare && 
+        navigator.canShare({ files: [file] });
+
+      if (isFileShareSupported) {
+        await navigator.share({
+          files: [file],
+          title: billName ? `Urunan - ${billName}` : "Urunan - Patungan",
+          text: billName ? `Detail patungan "${billName}"` : "Detail patungan kita",
+        });
+      } else {
+        // Fallback: download directly
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = dataUrl;
+        link.click();
       }
-    } else {
-      handleCopyLink();
+    } catch (err) {
+      console.error("Error generating or sharing image:", err);
+      alert("Gagal membagikan gambar. Mengunduh file rekap sebagai cadangan...");
+      // Download fallback
+      try {
+        const dataUrl = await toJpeg(shareViewRef.current, {
+          quality: 0.9,
+          backgroundColor: "#07080c",
+        });
+        const cleanBillName = billName ? billName.toLowerCase().replace(/[^a-z0-9]/g, "-") : "urunan";
+        const filename = `${cleanBillName}-rekap.jpg`;
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = dataUrl;
+        link.click();
+      } catch (innerErr) {
+        console.error("Inner download failure:", innerErr);
+      }
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -322,14 +382,14 @@ export default function Sidebar({
             className="settings-toggle-btn"
             title="Go to Landing Page (Dev)"
           >
-            <Home className="w-4 h-4" />
+            <Home className="size-4" />
           </button>
           <button
             type="button"
             onClick={() => setShowSettings(!showSettings)}
             className={`settings-toggle-btn ${showSettings ? 'active' : ''}`}
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="size-4" />
           </button>
         </div>
       </div>
@@ -338,7 +398,7 @@ export default function Sidebar({
       {showSettings && (
         <div className="settings-panel">
           <h3 className="settings-title">
-            <Settings className="w-3.5 h-3.5" /> Settings API Key
+            <Settings className="size-3.5" /> Settings API Key
           </h3>
           <p className="settings-desc">
             API key kamu disimpan lokal di browser dan dikirim langsung ke endpoint official Gemini Google. Aman bos!
@@ -367,7 +427,7 @@ export default function Sidebar({
 
       {/* Bill Name Display / Input */}
       <div className="bill-name-bar">
-        <Store className="w-5 h-5 bill-name-icon" />
+        <Store className="size-5 bill-name-icon" />
         <input
           type="text"
           placeholder={t("bill_placeholder")}
@@ -383,7 +443,7 @@ export default function Sidebar({
             className="bill-name-clear"
             aria-label="Hapus nama bill"
           >
-            <X className="w-5 h-5" />
+            <X className="size-5" />
           </button>
         )}
       </div>
@@ -395,21 +455,21 @@ export default function Sidebar({
           onClick={() => setActiveTab("items")}
           className={`tab-btn ${activeTab === "items" ? 'active-items' : ''}`}
         >
-          <Receipt className="w-3.5 h-3.5" /> {t("tab_items")} ({items.length})
+          <Receipt className="size-3.5" /> {t("tab_items")} ({items.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("crew")}
           className={`tab-btn ${activeTab === "crew" ? 'active-crew' : ''}`}
         >
-          <Users className="w-3.5 h-3.5" /> {t("tab_crew")} ({participants.length})
+          <Users className="size-3.5" /> {t("tab_crew")} ({participants.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("summary")}
           className={`tab-btn ${activeTab === "summary" ? 'active-summary' : ''}`}
         >
-          <Share2 className="w-3.5 h-3.5" /> {t("tab_recap")}
+          <Share2 className="size-3.5" /> {t("tab_recap")}
         </button>
       </div>
 
@@ -427,7 +487,7 @@ export default function Sidebar({
             >
               {!isParsingReceipt && !isScanningSuccess ? (
                 <div className="flex flex-col items-center gap-2">
-                  <Camera className="w-8 h-8 text-cyan-400" />
+                  <Camera className="size-8 text-cyan-400" />
                   <h3 className="ai-parser-title m-0">
                     Scan Struk
                   </h3>
@@ -443,7 +503,7 @@ export default function Sidebar({
 
                   {isScanningSuccess ? (
                     <div className="flex items-center gap-2 text-emerald-500 font-bold">
-                      <Check className="w-5 h-5" />
+                      <Check className="size-5" />
                       <span>{scanningProgressText}</span>
                     </div>
                   ) : (
@@ -515,7 +575,7 @@ export default function Sidebar({
                     />
                   </div>
                   <button type="submit" className="neo-btn neo-btn-primary py-1 px-3">
-                    <Plus className="w-4 h-4" />
+                    <Plus className="size-4" />
                   </button>
                 </div>
               </div>
@@ -544,37 +604,60 @@ export default function Sidebar({
                         className={`item-card ${splitCount > 0 ? 'tethered' : ''}`}
                       >
                         <div className="item-info">
-                          <h4 className="item-name">{item.name}</h4>
-                          <div className="item-price-row">
-                            <span className="item-price-tag">
-                              {formatRupiah(item.price * item.quantity)}
-                            </span>
-                            {item.quantity > 1 && (
-                              <span className="item-qty-tag">
-                                ({formatRupiah(item.price)} x {item.quantity})
-                              </span>
-                            )}
+                          <input
+                            type="text"
+                            value={item.name}
+                            aria-label={t("item_name_aria")}
+                            onChange={(e) => updateItem(item.id, e.target.value, item.price, item.quantity)}
+                            className="bg-transparent border-b border-dashed border-gray-700 hover:border-gray-500 focus:border-gray-400 focus:outline-none text-[16px] font-bold text-white w-full p-0.5 transition-colors"
+                          />
+                          <div className="item-price-row flex-wrap">
+                            <div className="flex items-center gap-0.5">
+                              <span className="text-[14px] text-gray-500 font-medium select-none">x</span>
+                              <input
+                                type="number"
+                                min="1"
+                                value={draftQty?.id === item.id ? draftQty.value : item.quantity}
+                                aria-label={t("item_qty_aria")}
+                                onFocus={() => setDraftQty({ id: item.id, value: item.quantity.toString() })}
+                                onChange={(e) => setDraftQty({ id: item.id, value: e.target.value })}
+                                onBlur={() => {
+                                  const parsed = parseInt(draftQty?.value ?? "", 10);
+                                  const newQty = isNaN(parsed) || parsed < 1 ? 1 : parsed;
+                                  updateItem(item.id, item.name, item.price, newQty);
+                                  setDraftQty(null);
+                                }}
+                                className="bg-transparent border-b border-dashed border-gray-700 hover:border-gray-500 focus:border-gray-400 focus:outline-none text-[16px] font-medium text-gray-300 w-14 px-0.5 text-center transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                            </div>
+                            
+                            <div className="flex items-center gap-0.5">
+                              <span className="text-[14px] text-gray-500 font-semibold select-none">Rp</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={formatRupiahInput(item.price)}
+                                aria-label={t("item_price_aria")}
+                                onChange={(e) => {
+                                  const newPrice = parseRupiahInput(e.target.value);
+                                  updateItem(item.id, item.name, newPrice, item.quantity);
+                                }}
+                                className="bg-transparent border-b border-dashed border-gray-700 hover:border-gray-500 focus:border-gray-400 focus:outline-none text-[16px] font-extrabold text-white w-28 px-0.5 text-left transition-colors"
+                              />
+                            </div>
+                            
                             {splitCount > 0 && (
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 ml-1">
                                 <div className="flex overflow-hidden">
                                   {assignedParticipants.map((p, idx) => (
                                     <div
                                       key={p.id}
-                                      className="inline-flex rounded-full bg-slate-950 border items-center justify-center select-none shadow-sm"
+                                      className="inline-flex rounded-full bg-slate-950 border items-center justify-center select-none shadow-sm participant-avatar-icon-badge"
                                       title={p.name}
                                       style={{
                                         borderColor: p.color,
-                                        width: "18px",
-                                        height: "18px",
-                                        fontSize: "10px",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        padding: "1.5px 0 0 1.5px",
-                                        lineHeight: 1,
-                                        fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif',
                                         marginLeft: idx > 0 ? "-6px" : "0px"
-                                      }}
+                                      } as React.CSSProperties}
                                     >
                                       {p.emoji.replace(/\uFE0F/g, '')}
                                     </div>
@@ -594,7 +677,7 @@ export default function Sidebar({
                           onClick={() => deleteItem(item.id)}
                           className="delete-btn"
                         >
-                          <Trash2 className="w-5 h-5" />
+                          <Trash2 className="size-5" />
                         </button>
                       </div>
                     );
@@ -737,7 +820,7 @@ export default function Sidebar({
                 </div>
 
                 <button type="submit" className="neo-btn neo-btn-primary justify-center text-xs py-2 w-full mt-1">
-                  <Plus className="w-3.5 h-3.5" /> {t("insert_crew_btn")}
+                  <Plus className="size-3.5" /> {t("insert_crew_btn")}
                 </button>
               </div>
             </form>
@@ -793,7 +876,7 @@ export default function Sidebar({
                             onClick={() => deleteParticipant(p.id)}
                             className="delete-btn"
                           >
-                            <Trash2 className="w-5 h-5" />
+                            <Trash2 className="size-5" />
                           </button>
                         </div>
                       </div>
@@ -813,7 +896,7 @@ export default function Sidebar({
             {/* Share Split Glass card */}
             <div className="glass-panel share-panel">
               <h3 className="share-panel-title">
-                <Share2 className="w-3.5 h-3.5" /> {t("share_crew_title")}
+                <Share2 className="size-3.5" /> {t("share_crew_title")}
               </h3>
 
               <p className="share-desc">
@@ -821,69 +904,62 @@ export default function Sidebar({
               </p>
 
               <div className="flex flex-col gap-2 w-full">
-                {isShareSupported ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleShareLink}
-                      className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
-                    >
-                      <Share2 className="w-3.5 h-3.5" /> {t("share_link_btn")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCopyLink}
-                      className="w-full neo-btn neo-btn-secondary justify-center text-xs py-2"
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" /> {t("copied_clipboard")}
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" /> {t("copy_share_btn")}
-                        </>
-                      )}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" /> {t("copied_clipboard")}
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" /> {t("copy_share_btn")}
-                      </>
-                    )}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleShareLink}
+                  disabled={isSharing}
+                  className="w-full neo-btn neo-btn-primary justify-center text-xs py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSharing ? (
+                    <>
+                      <div className="size-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      Membuat Gambar…
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="size-3.5" /> {t("share_link_btn")}
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="w-full neo-btn neo-btn-secondary justify-center text-xs py-2"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="size-3.5 text-emerald-400" /> {t("copied_clipboard")}
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="size-3.5" /> {t("copy_share_btn")}
+                    </>
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowQRModal(true)}
                   className="w-full neo-btn neo-btn-accent justify-center text-xs py-2"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-pink-400" /> {t("show_qr_btn")}
+                  <Sparkles className="size-3.5 text-pink-400" /> {t("show_qr_btn")}
                 </button>
               </div>
             </div>
 
             {/* QR Code Dialog Modal */}
             {showQRModal && (
-              <div
-                className="qr-modal-overlay"
-                onClick={() => setShowQRModal(false)}
-              >
+              <div className="qr-modal-container">
+                <button
+                  type="button"
+                  className="qr-modal-overlay"
+                  onClick={() => setShowQRModal(false)}
+                  aria-label={t("close_modal_aria") || "Tutup modal"}
+                />
                 <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()}>
                   <div className="qr-modal-header">
                     <h3 className="qr-modal-title logo-text">{t("scan_urunan")}</h3>
                     <button type="button" className="qr-modal-close-btn" onClick={() => setShowQRModal(false)}>
-                      <X className="w-4 h-4" />
+                      <X className="size-4" />
                     </button>
                   </div>
                   <div className="qr-modal-body">
@@ -910,9 +986,9 @@ export default function Sidebar({
                         title="Copy Link Share"
                       >
                         {qrCopied ? (
-                          <Check className="w-3 h-3" />
+                          <Check className="size-3" />
                         ) : (
-                          <Copy className="w-3 h-3" />
+                          <Copy className="size-3" />
                         )}
                       </button>
                     </div>
@@ -962,7 +1038,7 @@ export default function Sidebar({
                   <span>{t("split_status")}</span>
                   {isSplitComplete ? (
                     <span className="summary-row-val complete">
-                      {t("status_complete")} <Check className="w-3.5 h-3.5" />
+                      {t("status_complete")} <Check className="size-3.5" />
                     </span>
                   ) : (
                     <span className="summary-row-val partial">
@@ -1018,6 +1094,37 @@ export default function Sidebar({
 
       </div>
 
+      {/* Offscreen ShareView for Image Capture */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-9999px",
+          left: "-9999px",
+          width: "480px",
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          ref={shareViewRef}
+          className="share-view-capture-container"
+        >
+          <ShareView
+            participants={participants}
+            items={items}
+            tethers={tethers}
+            individualTotals={individualTotals}
+            totalReceiptCost={totalReceiptCost}
+            itemSubtotal={itemSubtotal}
+            tax={tax}
+            serviceCharge={serviceCharge}
+            discount={discount}
+            otherFees={otherFees}
+            billName={billName}
+            isSplitComplete={isSplitComplete}
+            defaultExpanded={true}
+          />
+        </div>
+      </div>
 
     </aside>
   );

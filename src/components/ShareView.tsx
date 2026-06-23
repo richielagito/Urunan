@@ -16,6 +16,7 @@ interface ShareViewProps {
   otherFees: number;
   billName: string;
   isSplitComplete: boolean;
+  defaultExpanded?: boolean;
 }
 
 const formatRupiah = (amount: number) => {
@@ -35,9 +36,15 @@ export default function ShareView({
   otherFees,
   billName,
   isSplitComplete,
+  defaultExpanded = false,
 }: ShareViewProps) {
   const { t } = useTranslation();
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    if (defaultExpanded) {
+      return new Set(participants.map((p) => p.id));
+    }
+    return new Set();
+  });
 
   const toggleExpand = (participantId: string) => {
     setExpandedIds(prev => {
@@ -65,6 +72,26 @@ export default function ShareView({
       }
     });
     return result;
+  };
+
+  // Calculate a participant's proportional share of extra charges (tax, service, otherFees, discount)
+  const getParticipantExtraCharges = (participantId: string) => {
+    const participantItems = getParticipantItems(participantId);
+    const participantItemSubtotal = participantItems.reduce((sum, { splitCost }) => sum + splitCost, 0);
+    const totalItemSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    if (totalItemSubtotal <= 0 || participantItemSubtotal <= 0) return null;
+
+    const proportion = participantItemSubtotal / totalItemSubtotal;
+    const taxShare = tax > 0 ? tax * proportion : 0;
+    const serviceShare = serviceCharge > 0 ? serviceCharge * proportion : 0;
+    const otherShare = otherFees > 0 ? otherFees * proportion : 0;
+    const discountShare = discount > 0 ? discount * proportion : 0;
+
+    const hasAny = taxShare > 0 || serviceShare > 0 || otherShare > 0 || discountShare > 0;
+    if (!hasAny) return null;
+
+    return { taxShare, serviceShare, otherShare, discountShare };
   };
 
   // Calculate Gamified Titles (same as Sidebar)
@@ -111,7 +138,7 @@ export default function ShareView({
         {/* Bill Name Display */}
         {billName && (
           <div className="share-bill-name">
-            <span className="share-bill-name-value">📍 {billName}</span>
+            <span className="share-bill-name-value" title={billName}>📍 {billName}</span>
           </div>
         )}
 
@@ -159,6 +186,7 @@ export default function ShareView({
               const percent = totalReceiptCost > 0 ? (total / totalReceiptCost) * 100 : 0;
               const isExpanded = expandedIds.has(p.id);
               const participantItems = getParticipantItems(p.id);
+              const extraCharges = isExpanded ? getParticipantExtraCharges(p.id) : null;
 
               return (
                 <div key={p.id} className="breakdown-row">
@@ -202,14 +230,44 @@ export default function ShareView({
                   {isExpanded && (
                     <div className="breakdown-items-detail">
                       {participantItems.length > 0 ? (
-                        participantItems.map(({ item, splitCost }) => (
-                          <div key={item.id} className="breakdown-item-row">
-                            <span className="breakdown-item-name">
-                              {item.name}
-                            </span>
-                            <span className="breakdown-item-price">{formatRupiah(splitCost)}</span>
-                          </div>
-                        ))
+                        <>
+                          {participantItems.map(({ item, splitCost }) => (
+                            <div key={item.id} className="breakdown-item-row">
+                              <span className="breakdown-item-name">
+                                {item.name}
+                              </span>
+                              <span className="breakdown-item-price">{formatRupiah(splitCost)}</span>
+                            </div>
+                          ))}
+                          {extraCharges && (
+                            <>
+                              {extraCharges.taxShare > 0 && (
+                                <div className="breakdown-item-row breakdown-item-row-extra">
+                                  <span className="breakdown-item-name breakdown-item-name-extra">{t("tax_colon")}</span>
+                                  <span className="breakdown-item-price breakdown-item-price-extra">{formatRupiah(extraCharges.taxShare)}</span>
+                                </div>
+                              )}
+                              {extraCharges.serviceShare > 0 && (
+                                <div className="breakdown-item-row breakdown-item-row-extra">
+                                  <span className="breakdown-item-name breakdown-item-name-extra">{t("service_colon")}</span>
+                                  <span className="breakdown-item-price breakdown-item-price-extra">{formatRupiah(extraCharges.serviceShare)}</span>
+                                </div>
+                              )}
+                              {extraCharges.otherShare > 0 && (
+                                <div className="breakdown-item-row breakdown-item-row-extra">
+                                  <span className="breakdown-item-name breakdown-item-name-extra">{t("other_colon")}</span>
+                                  <span className="breakdown-item-price breakdown-item-price-extra">{formatRupiah(extraCharges.otherShare)}</span>
+                                </div>
+                              )}
+                              {extraCharges.discountShare > 0 && (
+                                <div className="breakdown-item-row breakdown-item-row-extra">
+                                  <span className="breakdown-item-name breakdown-item-name-extra">{t("discount_colon")}</span>
+                                  <span className="breakdown-item-price breakdown-item-price-extra discount-val">-{formatRupiah(extraCharges.discountShare)}</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </>
                       ) : (
                         <div className="breakdown-item-empty">Belum ada item</div>
                       )}
@@ -221,6 +279,14 @@ export default function ShareView({
           </div>
 
         </div>
+      </div>
+
+      {/* Subtle Premium Watermark Footer */}
+      <div
+        className="text-center mt-2 text-[10px] font-semibold tracking-wider uppercase opacity-40"
+        style={{ color: "rgba(255, 255, 255, 0.4)" }}
+      >
+        urunan.vercel.app
       </div>
     </div>
   );
