@@ -1,6 +1,6 @@
 /**
  * Gemini Receipt OCR Parsing Service
- * Calls the Google Gemini 2.5 Flash-Lite API directly from the client.
+ * Calls the Google Gemini 3 Flash API directly from the client.
  * 
  * Features:
  * - Extracts items, tax, service charge, discount, other fees, and bill name
@@ -52,7 +52,7 @@ function fileToBase64(source: File | Blob): Promise<{ mimeType: string; base64Da
 }
 
 /**
- * Parses a receipt image file using the Gemini 2.5 Flash-Lite API.
+ * Parses a receipt image file using the Gemini 3 Flash API.
  * Applies client-side image preprocessing before sending to improve OCR accuracy.
  * Returns parsed items along with detected tax, service charge, discount, other fees, and bill name.
  */
@@ -75,7 +75,7 @@ export async function parseReceiptWithGemini(file: File, apiKey: string): Promis
   const { mimeType, base64Data } = await fileToBase64(processedImage);
 
   // 3. Prepare the endpoint
-  const modelName = "gemini-2.5-flash";
+  const modelName = "gemini-3-flash-preview";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
   // 4. Assemble system instructions and multimodal prompt
