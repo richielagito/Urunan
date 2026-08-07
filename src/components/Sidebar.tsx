@@ -1,7 +1,5 @@
-"use client";
-
-import React, { useState } from "react";
-import Image from "next/image";
+import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Users,
   Receipt,
@@ -15,12 +13,15 @@ import {
   Camera,
   UserCheck,
   X,
-  Store
+  Store,
+  Home
 } from "lucide-react";
 import { Participant, ReceiptItem, Tether } from "@/hooks/useUrunanState";
 import { parseReceiptWithGemini, ParsedItem, GeminiReceiptResult } from "@/lib/gemini";
 import confetti from "canvas-confetti";
 import { useTranslation } from "react-i18next";
+import { toJpeg } from "@/lib/html-to-image";
+import ShareView from "./ShareView";
 
 interface SidebarProps {
   participants: Participant[];
@@ -35,7 +36,6 @@ interface SidebarProps {
   otherFees: number;
   billName: string;
   isSplitComplete: boolean;
-  isReadOnly: boolean;
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
   setTax: (value: number) => void;
@@ -46,9 +46,9 @@ interface SidebarProps {
   addParticipant: (name: string, emoji: string, color: string) => void;
   deleteParticipant: (id: string) => void;
   addItem: (name: string, price: number, quantity: number) => void;
+  updateItem: (id: string, name: string, price: number, quantity: number) => void;
   deleteItem: (id: string) => void;
   addParsedItems: (parsed: ParsedItem[]) => void;
-  cloneSession: () => void;
   generateShareUrl: () => string;
 }
 
@@ -57,6 +57,18 @@ const COLOR_PRESETS = ["#ec4899", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#
 
 const formatRupiah = (amount: number) => {
   return "Rp" + Math.round(amount).toLocaleString("id-ID");
+};
+
+const formatRupiahInput = (value: number | string): string => {
+  if (value === undefined || value === null || value === "" || value === 0 || value === "0") return "";
+  const numString = value.toString().replace(/[^0-9]/g, "");
+  if (!numString) return "";
+  return parseInt(numString, 10).toLocaleString("id-ID");
+};
+
+const parseRupiahInput = (value: string): number => {
+  const cleanString = value.replace(/[^0-9]/g, "");
+  return cleanString ? parseInt(cleanString, 10) : 0;
 };
 
 export default function Sidebar({
@@ -72,7 +84,6 @@ export default function Sidebar({
   otherFees,
   billName,
   isSplitComplete,
-  isReadOnly,
   geminiApiKey,
   setGeminiApiKey,
   setTax,
@@ -83,17 +94,33 @@ export default function Sidebar({
   addParticipant,
   deleteParticipant,
   addItem,
+  updateItem,
   deleteItem,
   addParsedItems,
-  cloneSession,
   generateShareUrl
 }: SidebarProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [isSharing, setIsSharing] = useState(false);
+  const shareViewRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<"items" | "crew" | "summary">("items");
   const [showSettings, setShowSettings] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [qrCopied, setQrCopied] = useState(false);
+  // Draft state for quantity editing — allows empty field while typing
+  const [draftQty, setDraftQty] = useState<{ id: string; value: string } | null>(null);
+
+  useEffect(() => {
+    if (!showQRModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowQRModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showQRModal]);
 
   // Forms states
   const [newPartName, setNewPartName] = useState("");
@@ -111,6 +138,7 @@ export default function Sidebar({
   const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null);
   const [scanningProgressText, setScanningProgressText] = useState<string>('');
   const [isScanningSuccess, setIsScanningSuccess] = useState<boolean>(false);
+  const [scanningProgressPercent, setScanningProgressPercent] = useState<number>(0);
 
   // Add Participant
   const handleAddParticipantSubmit = (e: React.FormEvent) => {
@@ -158,11 +186,13 @@ export default function Sidebar({
     const stages = ["Memproses gambar...", "Mengupload struk...", "Menganalisa gambar...", "Mengekstrak harga...", "Menghitung Total..."];
     let currentStage = 0;
     setScanningProgressText(stages[0]);
+    setScanningProgressPercent(20);
 
     const progressInterval = setInterval(() => {
       currentStage++;
       if (currentStage < stages.length) {
         setScanningProgressText(stages[currentStage]);
+        setScanningProgressPercent((currentStage + 1) * 20);
       }
     }, 1200);
 
@@ -172,6 +202,7 @@ export default function Sidebar({
 
       if (result.items.length > 0) {
         setScanningProgressText("Berhasil!");
+        setScanningProgressPercent(100);
         setIsScanningSuccess(true);
         await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -186,10 +217,10 @@ export default function Sidebar({
       // Apply detected tax & service charge
       if (result.tax > 0) setTax(result.tax);
       if (result.serviceCharge > 0) setServiceCharge(result.serviceCharge);
-      
+
       // Apply detected discount
       if (result.discount > 0) setDiscount(result.discount);
-      
+
       // Apply detected other fees (sum all fee amounts)
       if (result.otherFees && result.otherFees.length > 0) {
         const totalOtherFees = result.otherFees.reduce((sum, fee) => sum + fee.amount, 0);
@@ -214,6 +245,71 @@ export default function Sidebar({
     }
   };
 
+
+  // Check if Web Share is supported
+  const isShareSupported = typeof navigator !== "undefined" && !!navigator.share;
+
+  const handleShareLink = async () => {
+    if (!shareViewRef.current) return;
+    setIsSharing(true);
+
+    try {
+      // 1. Generate JPEG image using html-to-image
+      const dataUrl = await toJpeg(shareViewRef.current, {
+        quality: 0.95,
+        backgroundColor: "#07080c",
+        cacheBust: true,
+      });
+
+      // 2. Convert dataUrl to a File object
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const cleanBillName = billName ? billName.toLowerCase().replace(/[^a-z0-9]/g, "-") : "urunan";
+      const filename = `${cleanBillName}-rekap.jpg`;
+      const file = new File([blob], filename, {
+        type: "image/jpeg",
+      });
+
+      // 3. Try sharing via Web Share API
+      const isFileShareSupported = typeof navigator !== "undefined" && 
+        !!navigator.canShare && 
+        navigator.canShare({ files: [file] });
+
+      if (isFileShareSupported) {
+        await navigator.share({
+          files: [file],
+          title: billName ? `Urunan - ${billName}` : "Urunan - Patungan",
+          text: billName ? `Detail patungan "${billName}"` : "Detail patungan kita",
+        });
+      } else {
+        // Fallback: download directly
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = dataUrl;
+        link.click();
+      }
+    } catch (err) {
+      console.error("Error generating or sharing image:", err);
+      alert("Gagal membagikan gambar. Mengunduh file rekap sebagai cadangan...");
+      // Download fallback
+      try {
+        const dataUrl = await toJpeg(shareViewRef.current, {
+          quality: 0.9,
+          backgroundColor: "#07080c",
+        });
+        const cleanBillName = billName ? billName.toLowerCase().replace(/[^a-z0-9]/g, "-") : "urunan";
+        const filename = `${cleanBillName}-rekap.jpg`;
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = dataUrl;
+        link.click();
+      } catch (innerErr) {
+        console.error("Inner download failure:", innerErr);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   // Handle Copy share link
   const handleCopyLink = () => {
@@ -276,20 +372,33 @@ export default function Sidebar({
             <span className="logo-subtext-def">{t("definition")}</span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowSettings(!showSettings)}
-          className={`settings-toggle-btn ${showSettings ? 'active' : ''}`}
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.removeItem("urunan_has_visited");
+              navigate("/");
+            }}
+            className="settings-toggle-btn"
+            title="Go to Landing Page (Dev)"
+          >
+            <Home className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings(!showSettings)}
+            className={`settings-toggle-btn ${showSettings ? 'active' : ''}`}
+          >
+            <Settings className="size-4" />
+          </button>
+        </div>
       </div>
 
       {/* Settings Panel Drawer */}
       {showSettings && (
         <div className="settings-panel">
           <h3 className="settings-title">
-            <Settings className="w-3.5 h-3.5" /> Settings API Key
+            <Settings className="size-3.5" /> Settings API Key
           </h3>
           <p className="settings-desc">
             API key kamu disimpan lokal di browser dan dikirim langsung ke endpoint official Gemini Google. Aman bos!
@@ -316,49 +425,28 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* READ-ONLY CLONE WORKSPACE PANEL */}
-      {isReadOnly && (
-        <div className="readonly-banner">
-          <p className="readonly-desc">{t("readonly_banner")}</p>
+      {/* Bill Name Display / Input */}
+      <div className="bill-name-bar">
+        <Store className="size-5 bill-name-icon" />
+        <input
+          type="text"
+          placeholder={t("bill_placeholder")}
+          aria-label={t("bill_aria")}
+          value={billName}
+          onChange={(e) => setBillName(e.target.value)}
+          className="bill-name-input"
+        />
+        {billName && (
           <button
             type="button"
-            onClick={cloneSession}
-            className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
+            onClick={() => setBillName("")}
+            className="bill-name-clear"
+            aria-label="Hapus nama bill"
           >
-            <UserCheck className="w-3.5 h-3.5" /> {t("clone_btn")}
+            <X className="size-5" />
           </button>
-        </div>
-      )}
-
-      {/* Bill Name Display / Input */}
-      {!isReadOnly ? (
-        <div className="bill-name-bar">
-          <Store className="w-3.5 h-3.5 bill-name-icon" />
-          <input
-            type="text"
-            placeholder={t("bill_placeholder")}
-            aria-label={t("bill_aria")}
-            value={billName}
-            onChange={(e) => setBillName(e.target.value)}
-            className="bill-name-input"
-          />
-          {billName && (
-            <button
-              type="button"
-              onClick={() => setBillName("")}
-              className="bill-name-clear"
-              aria-label="Hapus nama bill"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-      ) : billName ? (
-        <div className="bill-name-bar bill-name-bar-readonly">
-          <Store className="w-3.5 h-3.5 bill-name-icon" />
-          <span className="bill-name-display">{billName}</span>
-        </div>
-      ) : null}
+        )}
+      </div>
 
       {/* 2. Tabs Selector */}
       <div className="sidebar-tabs">
@@ -367,21 +455,21 @@ export default function Sidebar({
           onClick={() => setActiveTab("items")}
           className={`tab-btn ${activeTab === "items" ? 'active-items' : ''}`}
         >
-          <Receipt className="w-3.5 h-3.5" /> {t("tab_items")} ({items.length})
+          <Receipt className="size-3.5" /> {t("tab_items")} ({items.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("crew")}
           className={`tab-btn ${activeTab === "crew" ? 'active-crew' : ''}`}
         >
-          <Users className="w-3.5 h-3.5" /> {t("tab_crew")} ({participants.length})
+          <Users className="size-3.5" /> {t("tab_crew")} ({participants.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("summary")}
           className={`tab-btn ${activeTab === "summary" ? 'active-summary' : ''}`}
         >
-          <Share2 className="w-3.5 h-3.5" /> {t("tab_recap")}
+          <Share2 className="size-3.5" /> {t("tab_recap")}
         </button>
       </div>
 
@@ -393,91 +481,77 @@ export default function Sidebar({
           <div className="list-section">
 
             {/* AI Receipt Scanning Area */}
-            {!isReadOnly && (
-              <label
-                className={`glass-panel ai-parser-panel ${isParsingReceipt ? 'loading' : ''} ${isScanningSuccess ? 'success' : ''}`}
-                style={{
-                  cursor: isParsingReceipt ? 'not-allowed' : 'pointer',
-                  borderStyle: isParsingReceipt || isScanningSuccess ? 'solid' : 'dashed',
-                  borderColor: isScanningSuccess ? 'rgba(16, 185, 129, 0.5)' : undefined
-                }}
-              >
-                {!isParsingReceipt && !isScanningSuccess ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                    <Camera className="w-8 h-8 text-cyan-400" />
-                    <h3 className="ai-parser-title" style={{ margin: 0 }}>
-                      Scan Struk
-                    </h3>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%' }}>
-                    {uploadedImagePreview && (
-                      <div className="scanner-image-preview-container">
-                        <img src={uploadedImagePreview} alt="Receipt preview" className="scanner-image-preview" />
-                        {!isScanningSuccess && <div className="scanner-shimmer-overlay"></div>}
-                      </div>
-                    )}
+            {/* AI Receipt Scanning Area */}
+            <label
+              className={`glass-panel ai-parser-panel ${isParsingReceipt ? 'loading' : ''} ${isScanningSuccess ? 'success' : ''}`}
+            >
+              {!isParsingReceipt && !isScanningSuccess ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Camera className="size-8 text-cyan-400" />
+                  <h3 className="ai-parser-title m-0">
+                    Scan Struk
+                  </h3>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 w-full">
+                  {uploadedImagePreview && (
+                    <div className="scanner-image-preview-container">
+                      <img src={uploadedImagePreview} alt="Receipt preview" className="scanner-image-preview" />
+                      {!isScanningSuccess && <div className="scanner-shimmer-overlay"></div>}
+                    </div>
+                  )}
 
-                    {isScanningSuccess ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 'bold' }}>
-                        <Check className="w-5 h-5" />
-                        <span>{scanningProgressText}</span>
+                  {isScanningSuccess ? (
+                    <div className="flex items-center gap-2 text-emerald-500 font-bold">
+                      <Check className="size-5" />
+                      <span>{scanningProgressText}</span>
+                    </div>
+                  ) : (
+                    <div className="w-full flex flex-col items-center gap-2">
+                      <span className="parser-loader-text">
+                        {scanningProgressText}
+                      </span>
+                      <div className="scanner-progress-bar-container">
+                        <div className="scanner-progress-bar-fill" style={{ width: `${scanningProgressPercent}%` }}></div>
                       </div>
-                    ) : (
-                      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                        <span className="parser-loader-text" style={{ fontSize: '12px' }}>
-                          {scanningProgressText}
-                        </span>
-                        <div className="scanner-progress-bar-container">
-                          <div className="scanner-progress-bar-fill"></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
+              )}
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  aria-label="Pilih file gambar struk untuk discan"
-                  onChange={handleOCRFileChange}
-                  disabled={isParsingReceipt}
-                  style={{ display: 'none' }}
-                />
+              <input
+                type="file"
+                accept="image/*"
+                aria-label="Pilih file gambar struk untuk discan"
+                onChange={handleOCRFileChange}
+                disabled={isParsingReceipt}
+                className="hidden"
+              />
 
-                {/* Error Banner */}
-                {parsingError && (
-                  <div className="error-banner" style={{ marginTop: '8px' }}>
-                    {parsingError}
-                  </div>
-                )}
-              </label>
-            )}
+              {/* Error Banner */}
+              {parsingError && (
+                <div className="error-banner mt-2">
+                  {parsingError}
+                </div>
+              )}
+            </label>
 
             {/* Manual Add Item Form */}
-            {!isReadOnly && (
-              <form onSubmit={handleAddItemSubmit} className="glass-panel add-item-form">
-                <h3 className="form-title">{t("add_item_title")}</h3>
+            <form onSubmit={handleAddItemSubmit} className="glass-panel add-item-form">
+              <h3 className="form-title">{t("add_item_title")}</h3>
 
-                <div className="form-fields">
-                  <input
-                    type="text"
-                    placeholder={t("item_name_placeholder")}
-                    aria-label={t("item_name_aria")}
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    className="form-input"
-                  />
-                  <div className="form-fields-row">
-                    <input
-                      type="number"
-                      step="1000"
-                      placeholder="Harga"
-                      aria-label={t("item_price_aria")}
-                      value={newItemPrice}
-                      onChange={(e) => setNewItemPrice(e.target.value)}
-                      className="form-input-number price"
-                    />
+              <div className="form-fields">
+                <input
+                  type="text"
+                  placeholder={t("item_name_placeholder")}
+                  aria-label={t("item_name_aria")}
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  className="form-input"
+                />
+                <div className="form-fields-row">
+                  <div className="relative flex items-center">
+                    <span className="absolute left-2.5 text-gray-500 text-sm select-none pointer-events-none">x</span>
                     <input
                       type="number"
                       min="1"
@@ -485,15 +559,27 @@ export default function Sidebar({
                       aria-label={t("item_qty_aria")}
                       value={newItemQty}
                       onChange={(e) => setNewItemQty(e.target.value)}
-                      className="form-input-number qty"
+                      className="form-input-number qty text-left w-16 pl-prefix-x"
                     />
-                    <button type="submit" className="neo-btn neo-btn-primary py-1 px-3">
-                      <Plus className="w-4 h-4" />
-                    </button>
                   </div>
+                  <div className="relative flex items-center flex-1">
+                    <span className="absolute left-2.5 text-gray-500 text-sm select-none pointer-events-none">Rp</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Harga"
+                      aria-label={t("item_price_aria")}
+                      value={formatRupiahInput(newItemPrice)}
+                      onChange={(e) => setNewItemPrice(parseRupiahInput(e.target.value).toString())}
+                      className="form-input-number price w-full pl-prefix-rp"
+                    />
+                  </div>
+                  <button type="submit" className="neo-btn neo-btn-primary py-1 px-3">
+                    <Plus className="size-4" />
+                  </button>
                 </div>
-              </form>
-            )}
+              </div>
+            </form>
 
             {/* Items List */}
             <div className="list-section">
@@ -508,6 +594,9 @@ export default function Sidebar({
                   {items.map((item) => {
                     const tether = tethers.find(t => t.itemId === item.id);
                     const splitCount = tether ? tether.participantIds.length : 0;
+                    const assignedParticipants = tether
+                      ? participants.filter((p) => tether.participantIds.includes(p.id))
+                      : [];
 
                     return (
                       <div
@@ -515,32 +604,81 @@ export default function Sidebar({
                         className={`item-card ${splitCount > 0 ? 'tethered' : ''}`}
                       >
                         <div className="item-info">
-                          <h4 className="item-name">{item.name}</h4>
-                          <div className="item-price-row">
-                            <span className="item-price-tag">
-                              {formatRupiah(item.price * item.quantity)}
-                            </span>
-                            {item.quantity > 1 && (
-                              <span className="item-qty-tag">
-                                ({formatRupiah(item.price)} x {item.quantity})
-                              </span>
-                            )}
+                          <input
+                            type="text"
+                            value={item.name}
+                            aria-label={t("item_name_aria")}
+                            onChange={(e) => updateItem(item.id, e.target.value, item.price, item.quantity)}
+                            className="bg-transparent border-b border-dashed border-gray-700 hover:border-gray-500 focus:border-gray-400 focus:outline-none text-[16px] font-bold text-white w-full p-0.5 transition-colors"
+                          />
+                          <div className="item-price-row flex-wrap">
+                            <div className="flex items-center gap-0.5">
+                              <span className="text-[14px] text-gray-500 font-medium select-none">x</span>
+                              <input
+                                type="number"
+                                min="1"
+                                value={draftQty?.id === item.id ? draftQty.value : item.quantity}
+                                aria-label={t("item_qty_aria")}
+                                onFocus={() => setDraftQty({ id: item.id, value: item.quantity.toString() })}
+                                onChange={(e) => setDraftQty({ id: item.id, value: e.target.value })}
+                                onBlur={() => {
+                                  const parsed = parseInt(draftQty?.value ?? "", 10);
+                                  const newQty = isNaN(parsed) || parsed < 1 ? 1 : parsed;
+                                  updateItem(item.id, item.name, item.price, newQty);
+                                  setDraftQty(null);
+                                }}
+                                className="bg-transparent border-b border-dashed border-gray-700 hover:border-gray-500 focus:border-gray-400 focus:outline-none text-[16px] font-medium text-gray-300 w-14 px-0.5 text-center transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                            </div>
+                            
+                            <div className="flex items-center gap-0.5">
+                              <span className="text-[14px] text-gray-500 font-semibold select-none">Rp</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={formatRupiahInput(item.price)}
+                                aria-label={t("item_price_aria")}
+                                onChange={(e) => {
+                                  const newPrice = parseRupiahInput(e.target.value);
+                                  updateItem(item.id, item.name, newPrice, item.quantity);
+                                }}
+                                className="bg-transparent border-b border-dashed border-gray-700 hover:border-gray-500 focus:border-gray-400 focus:outline-none text-[16px] font-extrabold text-white w-28 px-0.5 text-left transition-colors"
+                              />
+                            </div>
+                            
                             {splitCount > 0 && (
-                              <span className="item-split-badge">
-                                {t("split_desc", { count: splitCount, amount: formatRupiah((item.price * item.quantity) / splitCount) })}
-                              </span>
+                              <div className="flex items-center gap-1.5 ml-1">
+                                <div className="flex overflow-hidden">
+                                  {assignedParticipants.map((p, idx) => (
+                                    <div
+                                      key={p.id}
+                                      className="inline-flex rounded-full bg-slate-950 border items-center justify-center select-none shadow-sm participant-avatar-icon-badge"
+                                      title={p.name}
+                                      style={{
+                                        borderColor: p.color,
+                                        marginLeft: idx > 0 ? "-6px" : "0px"
+                                      } as React.CSSProperties}
+                                    >
+                                      {p.emoji.replace(/\uFE0F/g, '')}
+                                    </div>
+                                  ))}
+                                </div>
+                                {splitCount > 1 && (
+                                  <span className="text-[10px] text-gray-400 font-medium">
+                                    ({formatRupiah((item.price * item.quantity) / splitCount)} {t("each")})
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
-                        {!isReadOnly && (
-                          <button
-                            type="button"
-                            onClick={() => deleteItem(item.id)}
-                            className="delete-btn"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => deleteItem(item.id)}
+                          className="delete-btn"
+                        >
+                          <Trash2 className="size-5" />
+                        </button>
                       </div>
                     );
                   })}
@@ -552,67 +690,73 @@ export default function Sidebar({
         )}
 
         {/* ================= TAB: ITEMS (continued) — Tax, Service, Discount & Other Fees Panel ================= */}
-        {activeTab === "items" && !isReadOnly && (
+        {activeTab === "items" && (
           <div className="glass-panel tax-service-panel">
             <h3 className="form-title">{t("tax_service_title")}</h3>
-            <div className="tax-service-fields">
+            <div className="flex flex-col gap-3">
               <div className="tax-service-field">
                 <label htmlFor="tax-input" className="tax-service-label">{t("tax_label")}</label>
-                <input
-                  id="tax-input"
-                  type="number"
-                  step="1000"
-                  min="0"
-                  placeholder="0"
-                  aria-label={t("tax_label")}
-                  value={tax || ""}
-                  onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
-                  className="form-input"
-                />
+                <div className="relative flex items-center w-full">
+                  <span className="absolute left-2.5 text-gray-500 text-sm select-none pointer-events-none">Rp</span>
+                  <input
+                    id="tax-input"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    aria-label={t("tax_label")}
+                    value={formatRupiahInput(tax)}
+                    onChange={(e) => setTax(parseRupiahInput(e.target.value))}
+                    className="form-input w-full pl-prefix-rp"
+                  />
+                </div>
               </div>
               <div className="tax-service-field">
                 <label htmlFor="service-charge-input" className="tax-service-label">{t("service_charge_label")}</label>
-                <input
-                  id="service-charge-input"
-                  type="number"
-                  step="1000"
-                  min="0"
-                  placeholder="0"
-                  aria-label={t("service_charge_label")}
-                  value={serviceCharge || ""}
-                  onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
-                  className="form-input"
-                />
+                <div className="relative flex items-center w-full">
+                  <span className="absolute left-2.5 text-gray-500 text-sm select-none pointer-events-none">Rp</span>
+                  <input
+                    id="service-charge-input"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    aria-label={t("service_charge_label")}
+                    value={formatRupiahInput(serviceCharge)}
+                    onChange={(e) => setServiceCharge(parseRupiahInput(e.target.value))}
+                    className="form-input w-full pl-prefix-rp"
+                  />
+                </div>
               </div>
-            </div>
-            <div className="tax-service-fields">
               <div className="tax-service-field">
                 <label htmlFor="discount-input" className="tax-service-label ">{t("discount_label")}</label>
-                <input
-                  id="discount-input"
-                  type="number"
-                  step="1000"
-                  min="0"
-                  placeholder="0"
-                  aria-label={t("discount_label")}
-                  value={discount || ""}
-                  onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                  className="form-input discount-input"
-                />
+                <div className="relative flex items-center w-full">
+                  <span className="absolute left-2.5 text-gray-500 text-sm select-none pointer-events-none">Rp</span>
+                  <input
+                    id="discount-input"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    aria-label={t("discount_label")}
+                    value={formatRupiahInput(discount)}
+                    onChange={(e) => setDiscount(parseRupiahInput(e.target.value))}
+                    className="form-input discount-input w-full pl-prefix-rp"
+                  />
+                </div>
               </div>
               <div className="tax-service-field">
                 <label htmlFor="other-fees-input" className="tax-service-label">{t("other_fees_label")}</label>
-                <input
-                  id="other-fees-input"
-                  type="number"
-                  step="1000"
-                  min="0"
-                  placeholder="0"
-                  aria-label={t("other_fees_label")}
-                  value={otherFees || ""}
-                  onChange={(e) => setOtherFees(parseFloat(e.target.value) || 0)}
-                  className="form-input"
-                />
+                <div className="relative flex items-center w-full">
+                  <span className="absolute left-2.5 text-gray-500 text-sm select-none pointer-events-none">Rp</span>
+                  <input
+                    id="other-fees-input"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    aria-label={t("other_fees_label")}
+                    value={formatRupiahInput(otherFees)}
+                    onChange={(e) => setOtherFees(parseRupiahInput(e.target.value))}
+                    className="form-input w-full pl-prefix-rp"
+                  />
+                </div>
               </div>
             </div>
             {(tax > 0 || serviceCharge > 0 || discount > 0 || otherFees > 0) && (
@@ -623,102 +767,63 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Show tax/service/discount/fees read-only in items tab when in readonly mode */}
-        {activeTab === "items" && isReadOnly && (tax > 0 || serviceCharge > 0 || discount > 0 || otherFees > 0) && (
-          <div className="glass-panel tax-service-panel">
-            <h3 className="form-title">{t("tax_service_title")}</h3>
-            <div className="tax-service-fields">
-              {tax > 0 && (
-                <div className="tax-service-field">
-                  <span className="tax-service-label">{t("tax_label_short")}</span>
-                  <span className="tax-service-readonly-val">{formatRupiah(tax)}</span>
-                </div>
-              )}
-              {serviceCharge > 0 && (
-                <div className="tax-service-field">
-                  <span className="tax-service-label">{t("service_charge_label")}</span>
-                  <span className="tax-service-readonly-val">{formatRupiah(serviceCharge)}</span>
-                </div>
-              )}
-            </div>
-            {(discount > 0 || otherFees > 0) && (
-              <div className="tax-service-fields">
-                {discount > 0 && (
-                  <div className="tax-service-field">
-                    <span className="tax-service-label">{t("discount_label")}</span>
-                    <span className="tax-service-readonly-val discount-val">-{formatRupiah(discount)}</span>
-                  </div>
-                )}
-                {otherFees > 0 && (
-                  <div className="tax-service-field">
-                    <span className="tax-service-label">{t("other_fees_label")}</span>
-                    <span className="tax-service-readonly-val">{formatRupiah(otherFees)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ================= TAB: CREW ================= */}
         {activeTab === "crew" && (
           <div className="list-section">
 
             {/* Add Participant Form */}
-            {!isReadOnly && (
-              <form onSubmit={handleAddParticipantSubmit} className="glass-panel add-item-form">
-                <h3 className="form-title">{t("add_member_title")}</h3>
+            <form onSubmit={handleAddParticipantSubmit} className="glass-panel add-item-form">
+              <h3 className="form-title">{t("add_member_title")}</h3>
 
-                <div className="form-fields">
-                  <input
-                    type="text"
-                    placeholder={t("member_name_placeholder")}
-                    aria-label={t("member_name_aria")}
-                    value={newPartName}
-                    onChange={(e) => setNewPartName(e.target.value)}
-                    className="form-input"
-                  />
+              <div className="form-fields">
+                <input
+                  type="text"
+                  placeholder={t("member_name_placeholder")}
+                  aria-label={t("member_name_aria")}
+                  value={newPartName}
+                  onChange={(e) => setNewPartName(e.target.value)}
+                  className="form-input"
+                />
 
-                  {/* Emoji Preset Selectors */}
-                  <div>
-                    <span className="crew-form-emoji-title">{t("choose_avatar")}</span>
-                    <div className="emojis-grid">
-                      {EMOJI_PRESETS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          onClick={() => setNewPartEmoji(emoji)}
-                          className={`emoji-select-btn ${newPartEmoji === emoji ? 'selected' : ''}`}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
+                {/* Emoji Preset Selectors */}
+                <div>
+                  <span className="crew-form-emoji-title">{t("choose_avatar")}</span>
+                  <div className="emojis-grid">
+                    {EMOJI_PRESETS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setNewPartEmoji(emoji)}
+                        className={`emoji-select-btn ${newPartEmoji === emoji ? 'selected' : ''}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
                   </div>
-
-                  {/* Color Selectors */}
-                  <div>
-                    <span className="crew-form-emoji-title">{t("choose_glow")}</span>
-                    <div className="colors-grid">
-                      {COLOR_PRESETS.map((color) => (
-                        <button
-                          key={color}
-                          type="button"
-                          onClick={() => setNewPartColor(color)}
-                          className={`color-select-btn ${newPartColor === color ? 'selected' : ''}`}
-                          style={{ backgroundColor: color }}
-                          aria-label={`Warna ${color}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <button type="submit" className="neo-btn neo-btn-primary justify-center text-xs py-2 w-full mt-1">
-                    <Plus className="w-3.5 h-3.5" /> {t("insert_crew_btn")}
-                  </button>
                 </div>
-              </form>
-            )}
+
+                {/* Color Selectors */}
+                <div>
+                  <span className="crew-form-emoji-title">{t("choose_glow")}</span>
+                  <div className="colors-grid">
+                    {COLOR_PRESETS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setNewPartColor(color)}
+                        className={`color-select-btn ${newPartColor === color ? 'selected' : ''}`}
+                        style={{ backgroundColor: color }}
+                        aria-label={`Warna ${color}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <button type="submit" className="neo-btn neo-btn-primary justify-center text-xs py-2 w-full mt-1">
+                  <Plus className="size-3.5" /> {t("insert_crew_btn")}
+                </button>
+              </div>
+            </form>
 
             {/* Participants list */}
             <div className="list-section">
@@ -766,15 +871,13 @@ export default function Sidebar({
                           <span className="participant-total-amount">
                             {formatRupiah(total)}
                           </span>
-                          {!isReadOnly && (
-                            <button
-                              type="button"
-                              onClick={() => deleteParticipant(p.id)}
-                              className="delete-btn"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => deleteParticipant(p.id)}
+                            className="delete-btn"
+                          >
+                            <Trash2 className="size-5" />
+                          </button>
                         </div>
                       </div>
                     );
@@ -793,26 +896,43 @@ export default function Sidebar({
             {/* Share Split Glass card */}
             <div className="glass-panel share-panel">
               <h3 className="share-panel-title">
-                <Share2 className="w-3.5 h-3.5" /> {t("share_crew_title")}
+                <Share2 className="size-3.5" /> {t("share_crew_title")}
               </h3>
 
               <p className="share-desc">
                 {t("share_desc_main")}<b>{t("share_desc_bold")}</b>).
               </p>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+              <div className="flex flex-col gap-2 w-full">
                 <button
                   type="button"
-                  onClick={handleCopyLink}
-                  className="w-full neo-btn neo-btn-primary justify-center text-xs py-2"
+                  onClick={handleShareLink}
+                  disabled={isSharing}
+                  className="w-full neo-btn neo-btn-primary justify-center text-xs py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {copied ? (
+                  {isSharing ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" /> {t("copied_clipboard")}
+                      <div className="size-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      Membuat Gambar…
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5" /> {t("copy_share_btn")}
+                      <Share2 className="size-3.5" /> {t("share_link_btn")}
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="w-full neo-btn neo-btn-secondary justify-center text-xs py-2"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="size-3.5 text-emerald-400" /> {t("copied_clipboard")}
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="size-3.5" /> {t("copy_share_btn")}
                     </>
                   )}
                 </button>
@@ -821,22 +941,25 @@ export default function Sidebar({
                   onClick={() => setShowQRModal(true)}
                   className="w-full neo-btn neo-btn-accent justify-center text-xs py-2"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-pink-400 animate-pulse" /> {t("show_qr_btn")}
+                  <Sparkles className="size-3.5 text-pink-400" /> {t("show_qr_btn")}
                 </button>
               </div>
             </div>
 
             {/* QR Code Dialog Modal */}
             {showQRModal && (
-              <div
-                className="qr-modal-overlay"
-                onClick={() => setShowQRModal(false)}
-              >
-                <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()} style={{ "--glow-color": "rgba(139, 92, 246, 0.3)" } as React.CSSProperties}>
+              <div className="qr-modal-container">
+                <button
+                  type="button"
+                  className="qr-modal-overlay"
+                  onClick={() => setShowQRModal(false)}
+                  aria-label={t("close_modal_aria") || "Tutup modal"}
+                />
+                <div className="qr-modal-content glass-panel pulsing-glow" onClick={(e) => e.stopPropagation()}>
                   <div className="qr-modal-header">
                     <h3 className="qr-modal-title logo-text">{t("scan_urunan")}</h3>
                     <button type="button" className="qr-modal-close-btn" onClick={() => setShowQRModal(false)}>
-                      <X className="w-4 h-4" />
+                      <X className="size-4" />
                     </button>
                   </div>
                   <div className="qr-modal-body">
@@ -844,17 +967,16 @@ export default function Sidebar({
                       {t("qr_desc")}
                     </p>
                     <div className="qr-code-wrapper">
-                      <Image
+                      <img
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateShareUrl())}&color=07080c&bgcolor=ffffff&qzone=2`}
                         alt="Urunan Share QR Code"
                         className="qr-code-img"
                         width={200}
                         height={200}
-                        unoptimized
                       />
                     </div>
                     <div className="qr-modal-url">
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span className="truncate">
                         Link: {generateShareUrl().substring(0, 43)}…
                       </span>
                       <button
@@ -864,9 +986,9 @@ export default function Sidebar({
                         title="Copy Link Share"
                       >
                         {qrCopied ? (
-                          <Check className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                          <Check className="size-3" />
                         ) : (
-                          <Copy className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                          <Copy className="size-3" />
                         )}
                       </button>
                     </div>
@@ -916,7 +1038,7 @@ export default function Sidebar({
                   <span>{t("split_status")}</span>
                   {isSplitComplete ? (
                     <span className="summary-row-val complete">
-                      {t("status_complete")} <Check className="w-3.5 h-3.5" />
+                      {t("status_complete")} <Check className="size-3.5" />
                     </span>
                   ) : (
                     <span className="summary-row-val partial">
@@ -972,6 +1094,37 @@ export default function Sidebar({
 
       </div>
 
+      {/* Offscreen ShareView for Image Capture */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-9999px",
+          left: "-9999px",
+          width: "480px",
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          ref={shareViewRef}
+          className="share-view-capture-container"
+        >
+          <ShareView
+            participants={participants}
+            items={items}
+            tethers={tethers}
+            individualTotals={individualTotals}
+            totalReceiptCost={totalReceiptCost}
+            itemSubtotal={itemSubtotal}
+            tax={tax}
+            serviceCharge={serviceCharge}
+            discount={discount}
+            otherFees={otherFees}
+            billName={billName}
+            isSplitComplete={isSplitComplete}
+            defaultExpanded={true}
+          />
+        </div>
+      </div>
 
     </aside>
   );
